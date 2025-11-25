@@ -643,7 +643,7 @@ else:
     #### Estratégias Implementadas:
     
     - **Máximo Sharpe**: Maximiza o retorno ajustado ao risco (melhor relação retorno/volatilidade)
-    - **Mínima Variância**: Minimiza o risco total do portfólio
+    - **Mínima Volatilidade**: Minimiza o risco (desvio padrão) total do portfólio
     - **Target**: Minimiza o risco para atingir um retorno alvo específico
     - **Carteira Personalizada**: Analise sua própria carteira comparando com as estratégias ótimas
     
@@ -651,19 +651,19 @@ else:
     
     1. Validação de ativos no Yahoo Finance (ações brasileiras .SA)
     2. Download de dados históricos e reamostragem mensal
-    3. Cálculo de retornos mensais (simples ou logarítmicos)
-    4. Otimização matemática usando SLSQP (Sequential Least Squares Programming)
+    3. Cálculo de *retornos mensais* (simples ou logarítmicos)
+    4. Otimização matemática usando SLSQP (Sequential Least Squares Programming, equivalente a programas de otimização como solver)
     5. Cálculo da Fronteira Eficiente de Markowitz
     6. Análise comparativa de todas as estratégias
     
     #### Como Usar:
     
-    1. Configure o período de análise (datas inicial e final)
+    1. Configure o período de análise (datas inicial e final, **ANO/MÊS/DIA**)
     2. Insira os tickers das ações brasileiras (sem .SA, ex: PETR4, VALE3)
     3. Escolha entre cotação ajustada ou simples
     4. Selecione retornos logarítmicos ou simples
     5. Defina o retorno alvo mensal desejado
-    6. (Opcional) Insira sua carteira personalizada para análise
+    6. (Opcional) Insira sua carteira personalizada para análise (*apenas ativos que foram selecionados para otimização anterior*)
     7. Clique em "Calcular Portfólios"
     8. Explore os resultados nas quatro abas:
        - **Fronteira Eficiente**: Visualização gráfica de todas as estratégias
