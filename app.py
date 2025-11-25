@@ -511,7 +511,7 @@ if calcular:
                 st.metric("Sharpe", f"{sharpe_max_sharpe:.4f}")
             
             with col2:
-                st.markdown("### 🛡️ Mínima Variância")
+                st.markdown("### 🛡️ Mínima Volatilidade")
                 df_min_vol = pd.DataFrame({
                     'Ativo': [a.replace('.SA', '') for a in ativos_validos],
                     'Peso (%)': pesos_min_vol * 100
