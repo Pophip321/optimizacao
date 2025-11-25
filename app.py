@@ -429,8 +429,8 @@ if calcular:
             
             estrategias = [
                 (vol_max_sharpe * 100, ret_max_sharpe * 100, 'Máx Sharpe', 'red', 12),
-                (vol_min_vol * 100, ret_min_vol * 100, 'Mín Variância', 'blue', 12),
-                (vol_target * 100, ret_target * 100, 'Target', 'purple', 12),
+                (vol_min_vol * 100, ret_min_vol * 100, 'Mín Risco', 'blue', 12),
+                (vol_target * 100, ret_target * 100, 'Target', 'white', 12),
             ]
             
             for vol, ret, nome, cor, tamanho in estrategias:
