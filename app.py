@@ -1,0 +1,673 @@
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import datetime as dt
+from scipy.optimize import minimize
+import plotly.graph_objects as go
+import plotly.express as px
+
+st.set_page_config(page_title="Otimização de Portfólio", page_icon="📊", layout="wide")
+
+st.title("📊 Otimização de Portfólio de Ações")
+st.markdown("Análise de fronteira eficiente e estratégias de alocação de ativos")
+
+with st.sidebar:
+    st.header("⚙️ Configurações")
+    
+    st.subheader("1️⃣ Período de Análise")
+    col1, col2 = st.columns(2)
+    with col1:
+        data_inicio = st.date_input(
+            "Data Inicial",
+            value=dt.date(2020, 12, 1),
+            max_value=dt.date.today()
+        )
+    with col2:
+        data_fim = st.date_input(
+            "Data Final",
+            value=dt.date(2025, 11, 1),
+            max_value=dt.date.today()
+        )
+    
+    st.subheader("2️⃣ Ativos (Tickers)")
+    st.markdown("Digite os tickers sem .SA (ex: PETR4, VALE3)")
+    
+    ativos_input = st.text_area(
+        "Um ticker por linha",
+        value="PETR4\nVALE3\nITUB4\nBBDC4\nABEV3",
+        height=150
+    )
+    
+    st.subheader("3️⃣ Opções")
+    usar_ajustada = st.checkbox(
+        "Usar cotação ajustada (dividendos/splits)",
+        value=True,
+        help="Considera proventos, bonificações e splits"
+    )
+    
+    usar_log = st.checkbox(
+        "Usar retornos logarítmicos",
+        value=False,
+        help="Caso contrário, usa retornos simples"
+    )
+    
+    target_return = st.number_input(
+        "Retorno alvo mensal (%)",
+        min_value=-10.0,
+        max_value=20.0,
+        value=1.0,
+        step=0.1,
+        help="Para estratégia Target"
+    ) / 100
+    
+    st.subheader("4️⃣ Carteira Personalizada (Opcional)")
+    analisar_carteira = st.checkbox("Analisar minha carteira", value=False)
+    
+    carteira_input = ""
+    if analisar_carteira:
+        carteira_input = st.text_area(
+            "Carteira (TICKER PESO%)",
+            value="PETR4 25\nVALE3 25\nITUB4 50",
+            height=100,
+            help="Digite um ativo e seu peso por linha. Ex: PETR4 25"
+        )
+    
+    calcular = st.button("🚀 Calcular Portfólios", type="primary", use_container_width=True)
+
+if calcular:
+    try:
+        with st.spinner("Processando dados..."):
+            inicio = dt.datetime.combine(data_inicio, dt.datetime.min.time())
+            fim = dt.datetime.combine(data_fim, dt.datetime.min.time())
+            
+            ativos_digitados = [linha.strip().upper() for linha in ativos_input.split('\n') if linha.strip()]
+            ativos_digitados = list(dict.fromkeys(ativos_digitados))
+            
+            if not ativos_digitados:
+                st.error("Por favor, insira pelo menos um ativo.")
+                st.stop()
+            
+            st.info(f"Validando {len(ativos_digitados)} ativos no Yahoo Finance...")
+            
+            ativos_ok = []
+            ativos_errados = []
+            
+            progress_bar = st.progress(0)
+            for idx, ticker in enumerate(ativos_digitados):
+                yf_ticker = ticker + ".SA"
+                t = yf.Ticker(yf_ticker)
+                try:
+                    info = t.history(period="1d")
+                    if info is None or info.empty:
+                        ativos_errados.append(ticker)
+                    else:
+                        ativos_ok.append(yf_ticker)
+                except:
+                    ativos_errados.append(ticker)
+                progress_bar.progress((idx + 1) / len(ativos_digitados))
+            
+            progress_bar.empty()
+            
+            if ativos_errados:
+                st.warning(f"⚠️ Ativos não encontrados: {', '.join(ativos_errados)}")
+            
+            if not ativos_ok:
+                st.error("Nenhum ativo válido encontrado!")
+                st.stop()
+            
+            lista_acoes = ativos_ok
+            st.success(f"✅ {len(lista_acoes)} ativos válidos: {', '.join([a.replace('.SA', '') for a in lista_acoes])}")
+            
+            with st.spinner("Baixando dados históricos..."):
+                dados = yf.download(lista_acoes, start=inicio, end=fim, auto_adjust=usar_ajustada, progress=False)
+                
+                if usar_ajustada:
+                    if hasattr(dados.columns, "levels") and "Adj Close" in dados.columns.levels[0]:
+                        precos = dados["Adj Close"].copy()
+                    else:
+                        precos = dados["Close"].copy()
+                else:
+                    precos = dados["Close"].copy()
+                
+                if isinstance(precos.columns, pd.MultiIndex):
+                    precos.columns = precos.columns.get_level_values(0)
+                
+                precos_mensais = precos.resample("ME").last()
+                
+                meses_por_ativo = precos_mensais.count()
+                ativos_validos_24m = meses_por_ativo[meses_por_ativo >= 24].index
+                precos_mensais = precos_mensais[ativos_validos_24m]
+                
+                if len(ativos_validos_24m) == 0:
+                    st.error("Nenhum ativo possui ao menos 24 meses de histórico. Ajuste a janela temporal.")
+                    st.stop()
+                
+                if usar_log:
+                    retornos = np.log(precos_mensais / precos_mensais.shift(1))
+                else:
+                    retornos = precos_mensais.pct_change()
+                
+                retornos = retornos.dropna(how="all")
+                retornos = retornos.dropna(axis=1, how="all")
+                
+                ativos_validos = list(retornos.columns)
+                n = len(ativos_validos)
+                
+                if n == 0:
+                    st.error("Nenhum ativo com retornos válidos após cálculo.")
+                    st.stop()
+            
+            with st.spinner("Calculando métricas..."):
+                media_retorno = retornos.mean()
+                matriz_covariancia = retornos.cov()
+                matriz_corr = retornos.corr()
+                matriz_corr_vals = matriz_corr.values
+                vol_individual = np.sqrt(np.diag(matriz_covariancia.values))
+                
+                def risco_portfolio(w):
+                    w = np.array(w)
+                    return float(np.sqrt(w.T @ matriz_covariancia.loc[ativos_validos, ativos_validos].values @ w))
+                
+                def retorno_portfolio(w):
+                    w = np.array(w)
+                    return float(np.dot(w, media_retorno[ativos_validos]))
+                
+                def sharpe_negativo(w):
+                    vol = risco_portfolio(w)
+                    if vol <= 0:
+                        return 1e6
+                    return - retorno_portfolio(w) / vol
+                
+                def soma_pesos(w):
+                    return np.sum(w) - 1.0
+                
+                def correlacao_media(w):
+                    w = np.array(w)
+                    return float(np.sum(np.outer(w, w) * matriz_corr_vals))
+                
+                bounds = tuple((0.0, 1.0) for _ in range(len(ativos_validos)))
+                w0 = np.ones(len(ativos_validos)) / len(ativos_validos)
+                
+                cov_matrix = matriz_covariancia.loc[ativos_validos, ativos_validos].values
+                mean_returns = media_retorno[ativos_validos].values
+            
+            # Monte Carlo removido para otimização
+            # with st.spinner(f"Simulando {numero_carteiras:,} carteiras (Monte Carlo)..."):
+            #     np.random.seed(42)
+            #     T_tabela_pesos = np.random.random((numero_carteiras, n))
+            #     T_tabela_pesos = T_tabela_pesos / T_tabela_pesos.sum(axis=1, keepdims=True)
+            #     
+            #     tabela_retornos = T_tabela_pesos @ mean_returns
+            #     variances = np.sum(T_tabela_pesos @ cov_matrix * T_tabela_pesos, axis=1)
+            #     tabela_volatilidades = np.sqrt(variances)
+            #     tabela_sharpe = np.divide(tabela_retornos, tabela_volatilidades, out=np.full_like(tabela_retornos, -np.inf), where=tabela_volatilidades!=0)
+            
+            with st.spinner("Otimizando estratégias..."):
+                res_maxsharpe = minimize(
+                    sharpe_negativo, w0, method="SLSQP", bounds=bounds,
+                    constraints={'type': 'eq', 'fun': soma_pesos}
+                )
+                pesos_max_sharpe = res_maxsharpe.x if res_maxsharpe.success else w0.copy()
+                ret_max_sharpe = retorno_portfolio(pesos_max_sharpe)
+                vol_max_sharpe = risco_portfolio(pesos_max_sharpe)
+                sharpe_max_sharpe = ret_max_sharpe / vol_max_sharpe if vol_max_sharpe != 0 else np.nan
+                
+                res_minvar = minimize(
+                    risco_portfolio, w0, method="SLSQP", bounds=bounds,
+                    constraints={'type': 'eq', 'fun': soma_pesos}
+                )
+                pesos_min_vol = res_minvar.x if res_minvar.success else w0.copy()
+                ret_min_vol = retorno_portfolio(pesos_min_vol)
+                vol_min_vol = risco_portfolio(pesos_min_vol)
+                sharpe_min_vol = ret_min_vol / vol_min_vol if vol_min_vol != 0 else np.nan
+                
+                # Estratégias removidas (DR1, CR1, CR1-RET, DR1-RET, ERC, Max/Min Retorno)
+                # retornos_individuais = media_retorno[ativos_validos].values
+                # idx_max_ret = np.argmax(retornos_individuais)
+                # idx_min_ret = np.argmin(retornos_individuais)
+                # 
+                # pesos_max_retorno = np.zeros(len(ativos_validos))
+                # pesos_min_retorno = np.zeros(len(ativos_validos))
+                # pesos_max_retorno[idx_max_ret] = 1.0
+                # pesos_min_retorno[idx_min_ret] = 1.0
+                # 
+                # ret_max_retorno = retornos_individuais[idx_max_ret]
+                # vol_max_retorno = risco_portfolio(pesos_max_retorno)
+                # sharpe_max_retorno = ret_max_retorno / vol_max_retorno if vol_max_retorno != 0 else np.nan
+                # 
+                # ret_min_retorno = retornos_individuais[idx_min_ret]
+                # vol_min_retorno = risco_portfolio(pesos_min_retorno)
+                # sharpe_min_retorno = ret_min_retorno / vol_min_retorno if vol_min_retorno != 0 else np.nan
+                # 
+                # def objetivo_dr1(w):
+                #     w = np.array(w)
+                #     numerador = np.dot(w, vol_individual)
+                #     denom = risco_portfolio(w)
+                #     if denom == 0:
+                #         return 1e6
+                #     DR = numerador / denom
+                #     return -DR
+                # 
+                # res_dr1 = minimize(objetivo_dr1, w0, method="SLSQP", bounds=bounds, constraints={'type': 'eq', 'fun': soma_pesos})
+                # pesos_dr1 = res_dr1.x if res_dr1.success else w0.copy()
+                # ret_dr1 = retorno_portfolio(pesos_dr1)
+                # vol_dr1 = risco_portfolio(pesos_dr1)
+                # sharpe_dr1 = ret_dr1 / vol_dr1 if vol_dr1 != 0 else np.nan
+                # 
+                # res_cr1 = minimize(correlacao_media, w0, method="SLSQP", bounds=bounds, constraints={'type': 'eq', 'fun': soma_pesos})
+                # pesos_cr1 = res_cr1.x if res_cr1.success else w0.copy()
+                # ret_cr1 = retorno_portfolio(pesos_cr1)
+                # vol_cr1 = risco_portfolio(pesos_cr1)
+                # sharpe_cr1 = ret_cr1 / vol_cr1 if vol_cr1 != 0 else np.nan
+                # corr_cr1 = correlacao_media(pesos_cr1)
+                # 
+                # def objetivo_cr1_ret(w):
+                #     w = np.array(w)
+                #     r = retorno_portfolio(w)
+                #     c = correlacao_media(w)
+                #     if c <= 0:
+                #         return 1e6
+                #     return -(r / c)
+                # 
+                # res_cr1_ret = minimize(objetivo_cr1_ret, w0, method="SLSQP", bounds=bounds, constraints={'type': 'eq', 'fun': soma_pesos})
+                # pesos_cr1_ret = res_cr1_ret.x if res_cr1_ret.success else w0.copy()
+                # ret_cr1_ret = retorno_portfolio(pesos_cr1_ret)
+                # vol_cr1_ret = risco_portfolio(pesos_cr1_ret)
+                # sharpe_cr1_ret = ret_cr1_ret / vol_cr1_ret if vol_cr1_ret != 0 else np.nan
+                # corr_cr1_ret = correlacao_media(pesos_cr1_ret)
+                # ratio_cr1_ret = ret_cr1_ret / corr_cr1_ret if corr_cr1_ret != 0 else np.nan
+                # 
+                # def objetivo_dr1_ret(w):
+                #     w = np.array(w)
+                #     numerador = np.dot(w, vol_individual)
+                #     denom = risco_portfolio(w)
+                #     if denom == 0:
+                #         return 1e6
+                #     DR = numerador / denom
+                #     r = retorno_portfolio(w)
+                #     if DR == 0:
+                #         return 1e6
+                #     return -(r / DR)
+                # 
+                # res_dr1_ret = minimize(objetivo_dr1_ret, w0, method="SLSQP", bounds=bounds, constraints={'type': 'eq', 'fun': soma_pesos})
+                # pesos_dr1_ret = res_dr1_ret.x if res_dr1_ret.success else w0.copy()
+                # ret_dr1_ret = retorno_portfolio(pesos_dr1_ret)
+                # vol_dr1_ret = risco_portfolio(pesos_dr1_ret)
+                # sharpe_dr1_ret = ret_dr1_ret / vol_dr1_ret if vol_dr1_ret != 0 else np.nan
+                # numerador_dr = np.dot(pesos_dr1_ret, vol_individual)
+                # denom_dr = vol_dr1_ret
+                # dr_ratio_dr1_ret = numerador_dr / denom_dr if denom_dr != 0 else np.nan
+                # ratio_dr1_ret = ret_dr1_ret / dr_ratio_dr1_ret if dr_ratio_dr1_ret != 0 else np.nan
+                # 
+                # def risk_contrib_erc(w):
+                #     w = np.array(w)
+                #     portfolio_vol = risco_portfolio(w)
+                #     if portfolio_vol == 0:
+                #         return 1e6
+                #     marginal_contrib = cov_matrix @ w
+                #     contrib = w * marginal_contrib / portfolio_vol
+                #     target_contrib = portfolio_vol / n
+                #     return np.sum((contrib - target_contrib) ** 2)
+                # 
+                # res_erc = minimize(risk_contrib_erc, w0, method="SLSQP", bounds=bounds, constraints={'type': 'eq', 'fun': soma_pesos})
+                # pesos_erc = res_erc.x if res_erc.success else w0.copy()
+                # ret_erc = retorno_portfolio(pesos_erc)
+                # vol_erc = risco_portfolio(pesos_erc)
+                # sharpe_erc = ret_erc / vol_erc if vol_erc != 0 else np.nan
+                
+                # Calcula limites de retorno a partir dos retornos individuais dos ativos
+                ret_min = float(media_retorno[ativos_validos].min())
+                ret_max = float(media_retorno[ativos_validos].max())
+                
+                if target_return < ret_min:
+                    target_return = ret_min
+                elif target_return > ret_max:
+                    target_return = ret_max
+                
+                def constraint_retorno(w):
+                    return float(np.dot(w, media_retorno[ativos_validos]) - target_return)
+                
+                res_target = minimize(
+                    risco_portfolio, w0, method="SLSQP", bounds=bounds,
+                    constraints=[
+                        {'type': 'eq', 'fun': soma_pesos},
+                        {'type': 'eq', 'fun': constraint_retorno}
+                    ],
+                    options={'ftol': 1e-12, 'maxiter': 1000}
+                )
+                
+                w_target = res_target.x if res_target.success else w0.copy()
+                ret_target = retorno_portfolio(w_target)
+                vol_target = risco_portfolio(w_target)
+                sharpe_target = ret_target / vol_target if vol_target != 0 else np.nan
+                
+                alvo_rets = np.linspace(ret_min, ret_max, 80)
+                fronteira_vols = []
+                fronteira_rets = []
+                
+                for r in alvo_rets:
+                    cons_r = (
+                        {'type': 'eq', 'fun': soma_pesos},
+                        {'type': 'eq', 'fun': lambda w, r=r: np.dot(w, media_retorno[ativos_validos]) - r}
+                    )
+                    res = minimize(risco_portfolio, w0, method='SLSQP', bounds=bounds, constraints=cons_r)
+                    if res.success:
+                        fronteira_vols.append(risco_portfolio(res.x))
+                        fronteira_rets.append(np.dot(res.x, media_retorno[ativos_validos]))
+            
+            pesos_user = None
+            ret_user = vol_user = sharpe_user = corr_user = None
+            
+            if analisar_carteira and carteira_input.strip():
+                with st.spinner("Analisando sua carteira..."):
+                    carteira_raw = {}
+                    for linha in carteira_input.strip().split('\n'):
+                        linha = linha.strip()
+                        if not linha:
+                            continue
+                        partes = linha.split()
+                        if len(partes) != 2:
+                            continue
+                        ticker, peso_str = partes
+                        try:
+                            peso = float(peso_str.replace(",", "."))
+                            ticker_full = ticker.upper()
+                            if not ticker_full.endswith(".SA"):
+                                ticker_full += ".SA"
+                            carteira_raw[ticker_full] = peso
+                        except:
+                            continue
+                    
+                    if carteira_raw:
+                        pesos_user = np.zeros(len(ativos_validos))
+                        for i, ativo in enumerate(ativos_validos):
+                            if ativo in carteira_raw:
+                                pesos_user[i] = carteira_raw[ativo]
+                        soma = pesos_user.sum()
+                        if soma > 0:
+                            pesos_user = pesos_user / soma
+                            ret_user = retorno_portfolio(pesos_user)
+                            vol_user = risco_portfolio(pesos_user)
+                            sharpe_user = ret_user / vol_user if vol_user != 0 else np.nan
+                            corr_user = correlacao_media(pesos_user)
+        
+        st.success("✅ Cálculos concluídos!")
+        
+        tab1, tab2, tab3, tab4 = st.tabs(["📈 Fronteira Eficiente", "📊 Estratégias", "💼 Ativos Individuais", "📋 Detalhes"])
+        
+        with tab1:
+            st.subheader("Fronteira Eficiente e Estratégias de Alocação")
+            
+            fig = go.Figure()
+            
+            # Monte Carlo removido
+            # fig.add_trace(go.Scatter(
+            #     x=tabela_volatilidades * 100,
+            #     y=tabela_retornos * 100,
+            #     mode='markers',
+            #     marker=dict(
+            #         size=3,
+            #         color=tabela_sharpe,
+            #         colorscale='Viridis',
+            #         showscale=True,
+            #         colorbar=dict(title="Sharpe"),
+            #         opacity=0.4
+            #     ),
+            #     name='Monte Carlo',
+            #     hovertemplate='Vol: %{x:.2f}%<br>Ret: %{y:.2f}%<extra></extra>'
+            # ))
+            
+            if len(fronteira_vols) > 0:
+                fig.add_trace(go.Scatter(
+                    x=np.array(fronteira_vols) * 100,
+                    y=np.array(fronteira_rets) * 100,
+                    mode='lines',
+                    line=dict(color='orange', width=3),
+                    name='Fronteira Eficiente'
+                ))
+            
+            estrategias = [
+                (vol_max_sharpe * 100, ret_max_sharpe * 100, 'Máx Sharpe', 'red', 12),
+                (vol_min_vol * 100, ret_min_vol * 100, 'Mín Variância', 'blue', 12),
+                (vol_target * 100, ret_target * 100, 'Target', 'purple', 12),
+            ]
+            
+            for vol, ret, nome, cor, tamanho in estrategias:
+                fig.add_trace(go.Scatter(
+                    x=[vol],
+                    y=[ret],
+                    mode='markers',
+                    marker=dict(size=tamanho, color=cor),
+                    name=nome,
+                    hovertemplate=f'{nome}<br>Vol: %{{x:.2f}}%<br>Ret: %{{y:.2f}}%<extra></extra>'
+                ))
+            
+            if pesos_user is not None:
+                fig.add_trace(go.Scatter(
+                    x=[vol_user * 100],
+                    y=[ret_user * 100],
+                    mode='markers',
+                    marker=dict(size=15, color='white', line=dict(color='black', width=2), symbol='star'),
+                    name='Minha Carteira',
+                    hovertemplate='Minha Carteira<br>Vol: %{x:.2f}%<br>Ret: %{y:.2f}%<extra></extra>'
+                ))
+            
+            fig.update_layout(
+                xaxis_title="Volatilidade Mensal (%)",
+                yaxis_title="Retorno Mensal (%)",
+                hovermode='closest',
+                height=600,
+                showlegend=True,
+                legend=dict(x=0.01, y=0.99),
+                template="plotly_white"
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with tab2:
+            st.subheader("Comparação de Estratégias")
+            
+            estrategias_data = {
+                'Estratégia': ['Máximo Sharpe', 'Mínima Variância', 'Target'],
+                'Retorno Mensal (%)': [ret_max_sharpe * 100, ret_min_vol * 100, ret_target * 100],
+                'Volatilidade (%)': [vol_max_sharpe * 100, vol_min_vol * 100, vol_target * 100],
+                'Sharpe Ratio': [sharpe_max_sharpe, sharpe_min_vol, sharpe_target]
+            }
+            
+            if pesos_user is not None:
+                estrategias_data['Estratégia'].append('🌟 Minha Carteira')
+                estrategias_data['Retorno Mensal (%)'].append(ret_user * 100)
+                estrategias_data['Volatilidade (%)'].append(vol_user * 100)
+                estrategias_data['Sharpe Ratio'].append(sharpe_user)
+            
+            df_estrategias = pd.DataFrame(estrategias_data)
+            df_estrategias = df_estrategias.sort_values('Sharpe Ratio', ascending=False)
+            
+            st.dataframe(
+                df_estrategias.style.format({
+                    'Retorno Mensal (%)': '{:.4f}',
+                    'Volatilidade (%)': '{:.4f}',
+                    'Sharpe Ratio': '{:.4f}'
+                }).background_gradient(subset=['Sharpe Ratio'], cmap='RdYlGn'),
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            st.markdown("---")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("### 🏆 Máximo Sharpe")
+                df_max_sharpe = pd.DataFrame({
+                    'Ativo': [a.replace('.SA', '') for a in ativos_validos],
+                    'Peso (%)': pesos_max_sharpe * 100
+                })
+                df_max_sharpe = df_max_sharpe[df_max_sharpe['Peso (%)'] > 0.01].sort_values('Peso (%)', ascending=False)
+                st.dataframe(df_max_sharpe.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
+                st.metric("Retorno Mensal", f"{ret_max_sharpe * 100:.4f}%")
+                st.metric("Volatilidade", f"{vol_max_sharpe * 100:.4f}%")
+                st.metric("Sharpe", f"{sharpe_max_sharpe:.4f}")
+            
+            with col2:
+                st.markdown("### 🛡️ Mínima Variância")
+                df_min_vol = pd.DataFrame({
+                    'Ativo': [a.replace('.SA', '') for a in ativos_validos],
+                    'Peso (%)': pesos_min_vol * 100
+                })
+                df_min_vol = df_min_vol[df_min_vol['Peso (%)'] > 0.01].sort_values('Peso (%)', ascending=False)
+                st.dataframe(df_min_vol.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
+                st.metric("Retorno Mensal", f"{ret_min_vol * 100:.4f}%")
+                st.metric("Volatilidade", f"{vol_min_vol * 100:.4f}%")
+                st.metric("Sharpe", f"{sharpe_min_vol:.4f}")
+            
+            st.markdown("---")
+            
+            st.markdown("### 🎯 Target")
+            col3_1, col3_2 = st.columns([2, 1])
+            
+            with col3_1:
+                df_target = pd.DataFrame({
+                    'Ativo': [a.replace('.SA', '') for a in ativos_validos],
+                    'Peso (%)': w_target * 100
+                })
+                df_target = df_target[df_target['Peso (%)'] > 0.01].sort_values('Peso (%)', ascending=False)
+                st.dataframe(df_target.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
+            
+            with col3_2:
+                st.metric("Retorno Mensal", f"{ret_target * 100:.4f}%")
+                st.metric("Volatilidade", f"{vol_target * 100:.4f}%")
+                st.metric("Sharpe", f"{sharpe_target:.4f}")
+            
+            if pesos_user is not None:
+                st.markdown("---")
+                st.markdown("### 🌟 Minha Carteira Personalizada")
+                
+                col_user1, col_user2 = st.columns([2, 1])
+                
+                with col_user1:
+                    df_user = pd.DataFrame({
+                        'Ativo': [a.replace('.SA', '') for a in ativos_validos],
+                        'Peso (%)': pesos_user * 100
+                    })
+                    df_user = df_user[df_user['Peso (%)'] > 0.01].sort_values('Peso (%)', ascending=False)
+                    st.dataframe(df_user.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
+                
+                with col_user2:
+                    st.metric("Retorno Mensal", f"{ret_user * 100:.4f}%")
+                    st.metric("Volatilidade", f"{vol_user * 100:.4f}%")
+                    st.metric("Sharpe", f"{sharpe_user:.4f}")
+                    st.metric("Correlação Média", f"{corr_user:.6f}")
+        
+        with tab3:
+            st.subheader("Métricas Individuais por Ativo")
+            
+            metricas_individuais = []
+            for ativo in ativos_validos:
+                r = media_retorno[ativo]
+                v = np.sqrt(matriz_covariancia.loc[ativo, ativo])
+                s = r / v if v != 0 else np.nan
+                metricas_individuais.append({
+                    'Ativo': ativo.replace('.SA', ''),
+                    'Retorno Médio (%)': r * 100,
+                    'Volatilidade (%)': v * 100,
+                    'Sharpe': s
+                })
+            
+            df_metricas = pd.DataFrame(metricas_individuais)
+            df_metricas = df_metricas.sort_values('Sharpe', ascending=False)
+            
+            st.dataframe(
+                df_metricas.style.format({
+                    'Retorno Médio (%)': '{:.4f}',
+                    'Volatilidade (%)': '{:.4f}',
+                    'Sharpe': '{:.4f}'
+                }).background_gradient(subset=['Sharpe'], cmap='RdYlGn'),
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            st.markdown("---")
+            st.subheader("Matriz de Correlação")
+            
+            fig_corr = px.imshow(
+                matriz_corr,
+                labels=dict(x="Ativo", y="Ativo", color="Correlação"),
+                x=[a.replace('.SA', '') for a in ativos_validos],
+                y=[a.replace('.SA', '') for a in ativos_validos],
+                color_continuous_scale='RdBu_r',
+                aspect="auto",
+                zmin=-1, zmax=1
+            )
+            fig_corr.update_layout(height=500)
+            st.plotly_chart(fig_corr, use_container_width=True)
+        
+        with tab4:
+            st.subheader("Informações Detalhadas")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Período de Análise", f"{data_inicio} a {data_fim}")
+            with col2:
+                st.metric("Número de Ativos", len(ativos_validos))
+            
+            st.markdown("---")
+            
+            col4, col5, col6 = st.columns(3)
+            with col4:
+                st.metric("Tipo de Cotação", "Ajustada" if usar_ajustada else "Simples")
+            with col5:
+                st.metric("Tipo de Retorno", "Logarítmico" if usar_log else "Simples")
+            with col6:
+                st.metric("Retorno Alvo", f"{target_return * 100:.2f}%")
+            
+            st.markdown("---")
+            st.subheader("Ativos Analisados")
+            ativos_display = [a.replace('.SA', '') for a in ativos_validos]
+            st.write(", ".join(ativos_display))
+    
+    except Exception as e:
+        st.error(f"Erro durante o processamento: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
+
+else:
+    st.info("👈 Configure os parâmetros na barra lateral e clique em 'Calcular Portfólios'")
+    
+    st.markdown("""
+    ### Sobre esta Aplicação
+    
+    Esta ferramenta realiza otimização de portfólio de ações utilizando a **Teoria Moderna de Portfólios** de Markowitz.
+    
+    #### Estratégias Implementadas:
+    
+    - **Máximo Sharpe**: Maximiza o retorno ajustado ao risco (melhor relação retorno/volatilidade)
+    - **Mínima Variância**: Minimiza o risco total do portfólio
+    - **Target**: Minimiza o risco para atingir um retorno alvo específico
+    - **Carteira Personalizada**: Analise sua própria carteira comparando com as estratégias ótimas
+    
+    #### Metodologia:
+    
+    1. Validação de ativos no Yahoo Finance (ações brasileiras .SA)
+    2. Download de dados históricos e reamostragem mensal
+    3. Cálculo de retornos mensais (simples ou logarítmicos)
+    4. Otimização matemática usando SLSQP (Sequential Least Squares Programming)
+    5. Cálculo da Fronteira Eficiente de Markowitz
+    6. Análise comparativa de todas as estratégias
+    
+    #### Como Usar:
+    
+    1. Configure o período de análise (datas inicial e final)
+    2. Insira os tickers das ações brasileiras (sem .SA, ex: PETR4, VALE3)
+    3. Escolha entre cotação ajustada ou simples
+    4. Selecione retornos logarítmicos ou simples
+    5. Defina o retorno alvo mensal desejado
+    6. (Opcional) Insira sua carteira personalizada para análise
+    7. Clique em "Calcular Portfólios"
+    8. Explore os resultados nas quatro abas:
+       - **Fronteira Eficiente**: Visualização gráfica de todas as estratégias
+       - **Estratégias**: Comparação detalhada e pesos de cada estratégia
+       - **Ativos Individuais**: Métricas e correlações dos ativos
+       - **Detalhes**: Informações técnicas da análise
+    """)
