@@ -469,7 +469,7 @@ if calcular:
             st.subheader("Comparação de Estratégias")
             
             estrategias_data = {
-                'Estratégia': ['Máximo Sharpe', 'Mínima Variância', 'Target'],
+                'Estratégia': ['Máximo Sharpe', 'Mínima Volatilidade', 'Target'],
                 'Retorno Mensal (%)': [ret_max_sharpe * 100, ret_min_vol * 100, ret_target * 100],
                 'Volatilidade (%)': [vol_max_sharpe * 100, vol_min_vol * 100, vol_target * 100],
                 'Sharpe Ratio': [sharpe_max_sharpe, sharpe_min_vol, sharpe_target]
