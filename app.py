@@ -52,6 +52,18 @@ with st.sidebar:
         help="Caso contrário, usa retornos simples"
     )
     
+    st.subheader("4️⃣ Limite Máximo por Ativo (%)")
+    limite_peso = st.slider(
+        "Escolha o limite máximo permitido",
+        min_value=5,
+        max_value=50,
+        value=25,
+        step=1,
+        help="Define o peso máximo permitido por ativo nas carteiras otimizadas limitadas."
+    ) / 100
+
+
+
     target_return = st.number_input(
         "Retorno alvo mensal (%)",
         min_value=-10.0,
@@ -61,7 +73,7 @@ with st.sidebar:
         help="Para estratégia Target"
     ) / 100
     
-    st.subheader("4️⃣ Carteira Personalizada (Opcional)")
+    st.subheader("5️⃣ Carteira Personalizada (Opcional)")
     analisar_carteira = st.checkbox("Analisar minha carteira", value=False)
     
     carteira_input = ""
@@ -204,6 +216,10 @@ if calcular:
             #     tabela_sharpe = np.divide(tabela_retornos, tabela_volatilidades, out=np.full_like(tabela_retornos, -np.inf), where=tabela_volatilidades!=0)
             
             with st.spinner("Otimizando estratégias..."):
+
+                # ------------------------------------------------------------
+                # 1) Carteira Máximo Sharpe (sem limite)
+                # ------------------------------------------------------------
                 res_maxsharpe = minimize(
                     sharpe_negativo, w0, method="SLSQP", bounds=bounds,
                     constraints={'type': 'eq', 'fun': soma_pesos}
@@ -211,8 +227,12 @@ if calcular:
                 pesos_max_sharpe = res_maxsharpe.x if res_maxsharpe.success else w0.copy()
                 ret_max_sharpe = retorno_portfolio(pesos_max_sharpe)
                 vol_max_sharpe = risco_portfolio(pesos_max_sharpe)
-                sharpe_max_sharpe = ret_max_sharpe / vol_max_sharpe if vol_max_sharpe != 0 else np.nan
-                
+                sharpe_max_sharpe = ret_max_sharpe / vol_max_sharpe
+
+
+                # ------------------------------------------------------------
+                # 2) Carteira Mínima Volatilidade (sem limite)
+                # ------------------------------------------------------------
                 res_minvar = minimize(
                     risco_portfolio, w0, method="SLSQP", bounds=bounds,
                     constraints={'type': 'eq', 'fun': soma_pesos}
@@ -220,142 +240,90 @@ if calcular:
                 pesos_min_vol = res_minvar.x if res_minvar.success else w0.copy()
                 ret_min_vol = retorno_portfolio(pesos_min_vol)
                 vol_min_vol = risco_portfolio(pesos_min_vol)
-                sharpe_min_vol = ret_min_vol / vol_min_vol if vol_min_vol != 0 else np.nan
-                
-                # Estratégias removidas (DR1, CR1, CR1-RET, DR1-RET, ERC, Max/Min Retorno)
-                # retornos_individuais = media_retorno[ativos_validos].values
-                # idx_max_ret = np.argmax(retornos_individuais)
-                # idx_min_ret = np.argmin(retornos_individuais)
-                # 
-                # pesos_max_retorno = np.zeros(len(ativos_validos))
-                # pesos_min_retorno = np.zeros(len(ativos_validos))
-                # pesos_max_retorno[idx_max_ret] = 1.0
-                # pesos_min_retorno[idx_min_ret] = 1.0
-                # 
-                # ret_max_retorno = retornos_individuais[idx_max_ret]
-                # vol_max_retorno = risco_portfolio(pesos_max_retorno)
-                # sharpe_max_retorno = ret_max_retorno / vol_max_retorno if vol_max_retorno != 0 else np.nan
-                # 
-                # ret_min_retorno = retornos_individuais[idx_min_ret]
-                # vol_min_retorno = risco_portfolio(pesos_min_retorno)
-                # sharpe_min_retorno = ret_min_retorno / vol_min_retorno if vol_min_retorno != 0 else np.nan
-                # 
-                # def objetivo_dr1(w):
-                #     w = np.array(w)
-                #     numerador = np.dot(w, vol_individual)
-                #     denom = risco_portfolio(w)
-                #     if denom == 0:
-                #         return 1e6
-                #     DR = numerador / denom
-                #     return -DR
-                # 
-                # res_dr1 = minimize(objetivo_dr1, w0, method="SLSQP", bounds=bounds, constraints={'type': 'eq', 'fun': soma_pesos})
-                # pesos_dr1 = res_dr1.x if res_dr1.success else w0.copy()
-                # ret_dr1 = retorno_portfolio(pesos_dr1)
-                # vol_dr1 = risco_portfolio(pesos_dr1)
-                # sharpe_dr1 = ret_dr1 / vol_dr1 if vol_dr1 != 0 else np.nan
-                # 
-                # res_cr1 = minimize(correlacao_media, w0, method="SLSQP", bounds=bounds, constraints={'type': 'eq', 'fun': soma_pesos})
-                # pesos_cr1 = res_cr1.x if res_cr1.success else w0.copy()
-                # ret_cr1 = retorno_portfolio(pesos_cr1)
-                # vol_cr1 = risco_portfolio(pesos_cr1)
-                # sharpe_cr1 = ret_cr1 / vol_cr1 if vol_cr1 != 0 else np.nan
-                # corr_cr1 = correlacao_media(pesos_cr1)
-                # 
-                # def objetivo_cr1_ret(w):
-                #     w = np.array(w)
-                #     r = retorno_portfolio(w)
-                #     c = correlacao_media(w)
-                #     if c <= 0:
-                #         return 1e6
-                #     return -(r / c)
-                # 
-                # res_cr1_ret = minimize(objetivo_cr1_ret, w0, method="SLSQP", bounds=bounds, constraints={'type': 'eq', 'fun': soma_pesos})
-                # pesos_cr1_ret = res_cr1_ret.x if res_cr1_ret.success else w0.copy()
-                # ret_cr1_ret = retorno_portfolio(pesos_cr1_ret)
-                # vol_cr1_ret = risco_portfolio(pesos_cr1_ret)
-                # sharpe_cr1_ret = ret_cr1_ret / vol_cr1_ret if vol_cr1_ret != 0 else np.nan
-                # corr_cr1_ret = correlacao_media(pesos_cr1_ret)
-                # ratio_cr1_ret = ret_cr1_ret / corr_cr1_ret if corr_cr1_ret != 0 else np.nan
-                # 
-                # def objetivo_dr1_ret(w):
-                #     w = np.array(w)
-                #     numerador = np.dot(w, vol_individual)
-                #     denom = risco_portfolio(w)
-                #     if denom == 0:
-                #         return 1e6
-                #     DR = numerador / denom
-                #     r = retorno_portfolio(w)
-                #     if DR == 0:
-                #         return 1e6
-                #     return -(r / DR)
-                # 
-                # res_dr1_ret = minimize(objetivo_dr1_ret, w0, method="SLSQP", bounds=bounds, constraints={'type': 'eq', 'fun': soma_pesos})
-                # pesos_dr1_ret = res_dr1_ret.x if res_dr1_ret.success else w0.copy()
-                # ret_dr1_ret = retorno_portfolio(pesos_dr1_ret)
-                # vol_dr1_ret = risco_portfolio(pesos_dr1_ret)
-                # sharpe_dr1_ret = ret_dr1_ret / vol_dr1_ret if vol_dr1_ret != 0 else np.nan
-                # numerador_dr = np.dot(pesos_dr1_ret, vol_individual)
-                # denom_dr = vol_dr1_ret
-                # dr_ratio_dr1_ret = numerador_dr / denom_dr if denom_dr != 0 else np.nan
-                # ratio_dr1_ret = ret_dr1_ret / dr_ratio_dr1_ret if dr_ratio_dr1_ret != 0 else np.nan
-                # 
-                # def risk_contrib_erc(w):
-                #     w = np.array(w)
-                #     portfolio_vol = risco_portfolio(w)
-                #     if portfolio_vol == 0:
-                #         return 1e6
-                #     marginal_contrib = cov_matrix @ w
-                #     contrib = w * marginal_contrib / portfolio_vol
-                #     target_contrib = portfolio_vol / n
-                #     return np.sum((contrib - target_contrib) ** 2)
-                # 
-                # res_erc = minimize(risk_contrib_erc, w0, method="SLSQP", bounds=bounds, constraints={'type': 'eq', 'fun': soma_pesos})
-                # pesos_erc = res_erc.x if res_erc.success else w0.copy()
-                # ret_erc = retorno_portfolio(pesos_erc)
-                # vol_erc = risco_portfolio(pesos_erc)
-                # sharpe_erc = ret_erc / vol_erc if vol_erc != 0 else np.nan
-                
-                # Calcula limites de retorno a partir dos retornos individuais dos ativos
+                sharpe_min_vol = ret_min_vol / vol_min_vol
+
+
+                # ------------------------------------------------------------
+                # 3) Target Return
+                # ------------------------------------------------------------
                 ret_min = float(media_retorno[ativos_validos].min())
                 ret_max = float(media_retorno[ativos_validos].max())
-                
-                if target_return < ret_min:
-                    target_return = ret_min
-                elif target_return > ret_max:
-                    target_return = ret_max
-                
+
+                target_return = np.clip(target_return, ret_min, ret_max)
+
                 def constraint_retorno(w):
-                    return float(np.dot(w, media_retorno[ativos_validos]) - target_return)
-                
+                    return np.dot(w, media_retorno[ativos_validos]) - target_return
+
                 res_target = minimize(
                     risco_portfolio, w0, method="SLSQP", bounds=bounds,
                     constraints=[
                         {'type': 'eq', 'fun': soma_pesos},
                         {'type': 'eq', 'fun': constraint_retorno}
-                    ],
-                    options={'ftol': 1e-12, 'maxiter': 1000}
+                    ]
                 )
-                
+
                 w_target = res_target.x if res_target.success else w0.copy()
                 ret_target = retorno_portfolio(w_target)
                 vol_target = risco_portfolio(w_target)
-                sharpe_target = ret_target / vol_target if vol_target != 0 else np.nan
-                
+                sharpe_target = ret_target / vol_target
+
+
+                # ------------------------------------------------------------
+                # 4) Fronteira eficiente
+                # ------------------------------------------------------------
                 alvo_rets = np.linspace(ret_min, ret_max, 80)
-                fronteira_vols = []
                 fronteira_rets = []
-                
+                fronteira_vols = []
+
                 for r in alvo_rets:
-                    cons_r = (
+                    cons = [
                         {'type': 'eq', 'fun': soma_pesos},
                         {'type': 'eq', 'fun': lambda w, r=r: np.dot(w, media_retorno[ativos_validos]) - r}
-                    )
-                    res = minimize(risco_portfolio, w0, method='SLSQP', bounds=bounds, constraints=cons_r)
+                    ]
+                    res = minimize(risco_portfolio, w0, method="SLSQP", bounds=bounds, constraints=cons)
                     if res.success:
-                        fronteira_vols.append(risco_portfolio(res.x))
                         fronteira_rets.append(np.dot(res.x, media_retorno[ativos_validos]))
-            
+                        fronteira_vols.append(risco_portfolio(res.x))
+
+
+                # =============================================================
+                # 5) OTIMIZAÇÕES COM LIMITE DE PESO
+                # =============================================================
+
+                limite_necessario = 1 / n
+                if limite_peso < limite_necessario:
+                    limite_peso = limite_necessario
+
+                bounds_limitados = tuple((0.0, limite_peso) for _ in range(n))
+
+                # --- Máx Sharpe limitado
+                res_maxsharpe_lim = minimize(
+                    sharpe_negativo,
+                    w0,
+                    method="SLSQP",
+                    bounds=bounds_limitados,
+                    constraints={'type': 'eq', 'fun': soma_pesos}
+                )
+                pesos_max_sharpe_lim = res_maxsharpe_lim.x
+                ret_max_sharpe_lim = retorno_portfolio(pesos_max_sharpe_lim)
+                vol_max_sharpe_lim = risco_portfolio(pesos_max_sharpe_lim)
+                sharpe_max_sharpe_lim = ret_max_sharpe_lim / vol_max_sharpe_lim
+
+                # --- Min Vol limitado
+                res_minvol_lim = minimize(
+                    risco_portfolio,
+                    w0,
+                    method="SLSQP",
+                    bounds=bounds_limitados,
+                    constraints={'type': 'eq', 'fun': soma_pesos}
+                )
+                pesos_min_vol_lim = res_minvol_lim.x
+                ret_min_vol_lim = retorno_portfolio(pesos_min_vol_lim)
+                vol_min_vol_lim = risco_portfolio(pesos_min_vol_lim)
+                sharpe_min_vol_lim = ret_min_vol_lim / vol_min_vol_lim
+
+
+
             pesos_user = None
             ret_user = vol_user = sharpe_user = corr_user = None
             
@@ -432,7 +400,27 @@ if calcular:
                 (vol_min_vol * 100, ret_min_vol * 100, 'Mín Risco', 'blue', 12),
                 (vol_target * 100, ret_target * 100, 'Target', 'white', 12),
             ]
-            
+            # Estratégias limitadas
+            estrategias_limitadas = [
+                (vol_max_sharpe_lim * 100, ret_max_sharpe_lim * 100, 'Sharpe Limitado', 'blue', 'cross'),
+                (vol_min_vol_lim   * 100, ret_min_vol_lim   * 100, 'MinVol Limitado', 'red',  'cross')
+            ]
+
+            for vol, ret, nome, cor, simbolo in estrategias_limitadas:
+                fig.add_trace(go.Scatter(
+                    x=[vol],
+                    y=[ret],
+                    mode='markers',
+                    marker=dict(
+                        size=14,
+                        color=cor,
+                        symbol=simbolo,
+                        line=dict(color='black', width=2)
+                    ),
+                    name=nome,
+                    hovertemplate=f'{nome}<br>Vol: %{{x:.2f}}%<br>Ret: %{{y:.2f}}%<extra></extra>'
+                ))
+
             for vol, ret, nome, cor, tamanho in estrategias:
                 fig.add_trace(go.Scatter(
                     x=[vol],
@@ -468,13 +456,41 @@ if calcular:
         with tab2:
             st.subheader("Comparação de Estratégias")
             
+            # =============================================================
+            # 1) TABELA RESUMO DAS ESTRATÉGIAS
+            # =============================================================
             estrategias_data = {
-                'Estratégia': ['Máximo Sharpe', 'Mínima Volatilidade', 'Target'],
-                'Retorno Mensal (%)': [ret_max_sharpe * 100, ret_min_vol * 100, ret_target * 100],
-                'Volatilidade (%)': [vol_max_sharpe * 100, vol_min_vol * 100, vol_target * 100],
-                'Sharpe Ratio': [sharpe_max_sharpe, sharpe_min_vol, sharpe_target]
+                'Estratégia': [
+                    'Máximo Sharpe',
+                    'Mínima Volatilidade',
+                    'Target',
+                    'Sharpe Limitado',
+                    'Vol Min Limitada'
+                ],
+                'Retorno Mensal (%)': [
+                    ret_max_sharpe * 100,
+                    ret_min_vol * 100,
+                    ret_target * 100,
+                    ret_max_sharpe_lim * 100,
+                    ret_min_vol_lim * 100
+                ],
+                'Volatilidade (%)': [
+                    vol_max_sharpe * 100,
+                    vol_min_vol * 100,
+                    vol_target * 100,
+                    vol_max_sharpe_lim * 100,
+                    vol_min_vol_lim * 100
+                ],
+                'Sharpe Ratio': [
+                    sharpe_max_sharpe,
+                    sharpe_min_vol,
+                    sharpe_target,
+                    sharpe_max_sharpe_lim,
+                    sharpe_min_vol_lim
+                ]
             }
             
+            # Adiciona carteira do usuário
             if pesos_user is not None:
                 estrategias_data['Estratégia'].append('🌟 Minha Carteira')
                 estrategias_data['Retorno Mensal (%)'].append(ret_user * 100)
@@ -496,8 +512,14 @@ if calcular:
             
             st.markdown("---")
             
+            # =============================================================
+            # 2) COLUNAS PARA AS PRINCIPAIS CARTEIRAS
+            # =============================================================
             col1, col2 = st.columns(2)
             
+            # -------------------------------------------------------------
+            # 🏆 Máximo Sharpe
+            # -------------------------------------------------------------
             with col1:
                 st.markdown("### 🏆 Máximo Sharpe")
                 df_max_sharpe = pd.DataFrame({
@@ -510,6 +532,9 @@ if calcular:
                 st.metric("Volatilidade", f"{vol_max_sharpe * 100:.4f}%")
                 st.metric("Sharpe", f"{sharpe_max_sharpe:.4f}")
             
+            # -------------------------------------------------------------
+            # 🛡️ Mínima Volatilidade
+            # -------------------------------------------------------------
             with col2:
                 st.markdown("### 🛡️ Mínima Volatilidade")
                 df_min_vol = pd.DataFrame({
@@ -522,8 +547,11 @@ if calcular:
                 st.metric("Volatilidade", f"{vol_min_vol * 100:.4f}%")
                 st.metric("Sharpe", f"{sharpe_min_vol:.4f}")
             
-            st.markdown("---")
             
+            # =============================================================
+            # 3) TARGET
+            # =============================================================
+            st.markdown("---")
             st.markdown("### 🎯 Target")
             col3_1, col3_2 = st.columns([2, 1])
             
@@ -540,6 +568,45 @@ if calcular:
                 st.metric("Volatilidade", f"{vol_target * 100:.4f}%")
                 st.metric("Sharpe", f"{sharpe_target:.4f}")
             
+            
+            # =============================================================
+            # 4) CARTEIRAS LIMITADAS
+            # =============================================================
+            st.markdown("---")
+            st.markdown("## 🔒 Otimizações com Limite de Peso")
+            
+            col_lim1, col_lim2 = st.columns(2)
+            
+            # ---- SHARPE LIMITADO
+            with col_lim1:
+                st.markdown("### 🔒 Máximo Sharpe (Limitado)")
+                df_lim_sharpe = pd.DataFrame({
+                    'Ativo': [a.replace('.SA', '') for a in ativos_validos],
+                    'Peso (%)': pesos_max_sharpe_lim * 100
+                })
+                df_lim_sharpe = df_lim_sharpe[df_lim_sharpe['Peso (%)'] > 0.01].sort_values('Peso (%)', ascending=False)
+                st.dataframe(df_lim_sharpe.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
+                st.metric("Retorno Mensal", f"{ret_max_sharpe_lim * 100:.4f}%")
+                st.metric("Volatilidade", f"{vol_max_sharpe_lim * 100:.4f}%")
+                st.metric("Sharpe", f"{sharpe_max_sharpe_lim:.4f}")
+            
+            # ---- MIN VOL LIMITADA
+            with col_lim2:
+                st.markdown("### 🔒 Mínima Volatilidade (Limitada)")
+                df_lim_minvol = pd.DataFrame({
+                    'Ativo': [a.replace('.SA', '') for a in ativos_validos],
+                    'Peso (%)': pesos_min_vol_lim * 100
+                })
+                df_lim_minvol = df_lim_minvol[df_lim_minvol['Peso (%)'] > 0.01].sort_values('Peso (%)', ascending=False)
+                st.dataframe(df_lim_minvol.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
+                st.metric("Retorno Mensal", f"{ret_min_vol_lim * 100:.4f}%")
+                st.metric("Volatilidade", f"{vol_min_vol_lim * 100:.4f}%")
+                st.metric("Sharpe", f"{sharpe_min_vol_lim:.4f}")
+            
+            
+            # =============================================================
+            # 5) MINHA CARTEIRA
+            # =============================================================
             if pesos_user is not None:
                 st.markdown("---")
                 st.markdown("### 🌟 Minha Carteira Personalizada")
@@ -559,6 +626,7 @@ if calcular:
                     st.metric("Volatilidade", f"{vol_user * 100:.4f}%")
                     st.metric("Sharpe", f"{sharpe_user:.4f}")
                     st.metric("Correlação Média", f"{corr_user:.6f}")
+
         
         with tab3:
             st.subheader("Métricas Individuais por Ativo")
