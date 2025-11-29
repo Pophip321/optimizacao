@@ -614,7 +614,7 @@ if calcular:
                     vol_min_vol * 100,
                     vol_target * 100
                 ],
-                'Sharpe Ratio': [
+                'Sharpe Ratio (%)': [  
                     sharpe_max_sharpe * 100,
                     sharpe_min_vol * 100,
                     sharpe_target * 100
@@ -625,18 +625,17 @@ if calcular:
             if limite_peso > 0 and ret_acum_real_max_sharpe_lim is not None and ret_acum_real_min_vol_lim is not None:
                 estrategias_data['Estratégia'].extend(['Sharpe Limitado', 'Vol Min Limitada'])
                 estrategias_data['Retorno Mensal (%)'].extend([ret_max_sharpe_lim * 100, ret_min_vol_lim * 100])
-                estrategias_data['Retorno Acumulado Real (%)'].extend([ret_acum_real_max_sharpe_lim * 100, ret_acum_real_min_vol_lim * 100])
                 estrategias_data['Volatilidade (%)'].extend([vol_max_sharpe_lim * 100, vol_min_vol_lim * 100])
-                estrategias_data['Sharpe Ratio (%)'].extend([sharpe_max_sharpe_lim * 100, sharpe_min_vol_lim * 100])
-
+                estrategias_data['Sharpe Ratio (%)'].extend([sharpe_max_sharpe_lim * 100, sharpe_min_vol_lim * 100])  
+                estrategias_data['Retorno Acumulado Real (%)'].extend([ret_acum_real_max_sharpe_lim * 100, ret_acum_real_min_vol_lim * 100])
 
             # Adiciona carteira do usuário
             if pesos_user is not None:
                 estrategias_data['Estratégia'].append('🌟 Minha Carteira')
                 estrategias_data['Retorno Mensal (%)'].append(ret_user * 100)
-                estrategias_data['Retorno Acumulado Real (%)'].append(ret_acum_real_user * 100)
                 estrategias_data['Volatilidade (%)'].append(vol_user * 100)
-                estrategias_data['Sharpe Ratio (%)'].append(sharpe_user * 100)
+                estrategias_data['Sharpe Ratio (%)'].append(sharpe_user * 100)  
+                estrategias_data['Retorno Acumulado Real (%)'].append(ret_acum_real_user * 100)
                 
                         
             df_estrategias = pd.DataFrame(estrategias_data)
@@ -646,9 +645,9 @@ if calcular:
                 df_estrategias.style.format({
                     'Retorno Mensal (%)': '{:.4f}',
                     'Volatilidade (%)': '{:.4f}',
-                    'Sharpe Ratio (%)': '{:.4f}',
+                    'Sharpe Ratio (%)': '{:.4f}',  
                     'Retorno Acumulado Real (%)': '{:.4f}'
-                }).background_gradient(subset=['Sharpe Ratio (%)'], cmap='RdYlGn'),
+                }).background_gradient(subset=['Sharpe Ratio (%)'], cmap='RdYlGn'),  
                 use_container_width=True,
                 hide_index=True
             )
