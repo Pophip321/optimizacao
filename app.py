@@ -615,9 +615,9 @@ if calcular:
                     vol_target * 100
                 ],
                 'Sharpe Ratio': [
-                    sharpe_max_sharpe,
-                    sharpe_min_vol,
-                    sharpe_target
+                    sharpe_max_sharpe * 100,
+                    sharpe_min_vol * 100,
+                    sharpe_target * 100
                 ]
             }
 
@@ -627,7 +627,7 @@ if calcular:
                 estrategias_data['Retorno Mensal (%)'].extend([ret_max_sharpe_lim * 100, ret_min_vol_lim * 100])
                 estrategias_data['Retorno Acumulado Real (%)'].extend([ret_acum_real_max_sharpe_lim * 100, ret_acum_real_min_vol_lim * 100])
                 estrategias_data['Volatilidade (%)'].extend([vol_max_sharpe_lim * 100, vol_min_vol_lim * 100])
-                estrategias_data['Sharpe Ratio'].extend([sharpe_max_sharpe_lim, sharpe_min_vol_lim])
+                estrategias_data['Sharpe Ratio (%)'].extend([sharpe_max_sharpe_lim, sharpe_min_vol_lim])
 
 
             # Adiciona carteira do usuário
@@ -636,7 +636,7 @@ if calcular:
                 estrategias_data['Retorno Mensal (%)'].append(ret_user * 100)
                 estrategias_data['Retorno Acumulado Real (%)'].append(ret_acum_real_user * 100)
                 estrategias_data['Volatilidade (%)'].append(vol_user * 100)
-                estrategias_data['Sharpe Ratio'].append(sharpe_user)
+                estrategias_data['Sharpe Ratio (%)'].append(sharpe_user)
                 
                         
             df_estrategias = pd.DataFrame(estrategias_data)
@@ -646,9 +646,9 @@ if calcular:
                 df_estrategias.style.format({
                     'Retorno Mensal (%)': '{:.4f}',
                     'Volatilidade (%)': '{:.4f}',
-                    'Sharpe Ratio': '{:.4f}',
+                    'Sharpe Ratio (%)': '{:.4f}',
                     'Retorno Acumulado Real (%)': '{:.4f}'
-                }).background_gradient(subset=['Sharpe Ratio'], cmap='RdYlGn'),
+                }).background_gradient(subset=['Sharpe Ratio (%)'], cmap='RdYlGn'),
                 use_container_width=True,
                 hide_index=True
             )
@@ -680,7 +680,7 @@ if calcular:
                 # NOVAS MÉTRICAS - AMBOS RETORNOS ACUMULADOS
                 st.metric("Retorno Acumulado Real", f"{ret_acum_real_max_sharpe * 100:.4f}%")
                 st.metric("Retorno Acumulado Esperado", f"{ret_acum_esperado_max_sharpe * 100:.4f}%")
-                st.caption("📊 Real: retorno efetivo | Esperado: se a média se repetir")
+
             
             # -------------------------------------------------------------
             # 🛡️ Mínima Volatilidade
@@ -702,7 +702,7 @@ if calcular:
                 # NOVAS MÉTRICAS - AMBOS RETORNOS ACUMULADOS
                 st.metric("Retorno Acumulado Real", f"{ret_acum_real_min_vol * 100:.4f}%")
                 st.metric("Retorno Acumulado Esperado", f"{ret_acum_esperado_min_vol * 100:.4f}%")
-                st.caption("📊 Real: retorno efetivo | Esperado: se a média se repetir")
+
             
             
             # =============================================================
@@ -729,7 +729,7 @@ if calcular:
                 # NOVAS MÉTRICAS - AMBOS RETORNOS ACUMULADOS
                 st.metric("Retorno Acumulado Real", f"{ret_acum_real_target * 100:.4f}%")
                 st.metric("Retorno Acumulado Esperado", f"{ret_acum_esperado_target * 100:.4f}%")
-                st.caption("📊 Real: retorno efetivo | Esperado: se a média se repetir")
+
             
             
             # =============================================================
@@ -759,7 +759,7 @@ if calcular:
                     # NOVAS MÉTRICAS - AMBOS RETORNOS ACUMULADOS
                     st.metric("Retorno Acumulado Real", f"{ret_acum_real_max_sharpe_lim * 100:.4f}%")
                     st.metric("Retorno Acumulado Esperado", f"{ret_acum_esperado_max_sharpe_lim * 100:.4f}%")
-                    st.caption("📊 Real: retorno efetivo | Esperado: se a média se repetir")
+
                 
                 # ---- MIN VOL LIMITADA
                 with col_lim2:
@@ -779,7 +779,7 @@ if calcular:
                     # NOVAS MÉTRICAS - AMBOS RETORNOS ACUMULADOS
                     st.metric("Retorno Acumulado Real", f"{ret_acum_real_min_vol_lim * 100:.4f}%")
                     st.metric("Retorno Acumulado Esperado", f"{ret_acum_esperado_min_vol_lim * 100:.4f}%")
-                    st.caption("📊 Real: retorno efetivo | Esperado: se a média se repetir")
+
             
             
             # =============================================================
@@ -808,7 +808,6 @@ if calcular:
                     # NOVAS MÉTRICAS - AMBOS RETORNOS ACUMULADOS
                     st.metric("Retorno Acumulado Real", f"{ret_acum_real_user * 100:.4f}%")
                     st.metric("Retorno Acumulado Esperado", f"{ret_acum_esperado_user * 100:.4f}%")
-                    st.caption("📊 Real: retorno efetivo | Esperado: se a média se repetir")
 
         
         with tab3:
@@ -941,11 +940,12 @@ else:
     - **Máximo Sharpe**: Maximiza o retorno ajustado ao risco (melhor relação retorno/volatilidade)
     - **Mínima Volatilidade**: Minimiza o risco (desvio padrão) total do portfólio
     - **Target**: Minimiza o risco para atingir um retorno alvo específico
+    - **Limite de Peso Máximo**: Opção para limitar o peso máximo de cada ativo no portfólio otimizado
     - **Carteira Personalizada**: Analise sua própria carteira comparando com as estratégias ótimas
     
     #### Metodologia:
     
-    1. Validação de ativos no Yahoo Finance (ações brasileiras .SA)
+    1. Validação de ativos no Yahoo Finance (ações e ETFs brasileiros)
     2. Download de dados históricos e reamostragem mensal
     3. Cálculo de *retornos mensais* (simples ou logarítmicos)
     4. Otimização matemática usando SLSQP (Sequential Least Squares Programming, equivalente a programas de otimização como solver)
@@ -974,13 +974,14 @@ else:
     #### Como Usar:
     
     1. Configure o período de análise (datas inicial e final, **ANO/MÊS/DIA**)
-    2. Insira os tickers das ações brasileiras (sem .SA, ex: PETR4, VALE3)
+    2. Insira os tickers das ações/ETFs brasileiros (ex: PETR4, VALE3, BOVA11)
     3. Escolha entre cotação ajustada ou simples
     4. Selecione retornos logarítmicos ou simples
-    5. Defina o retorno alvo mensal desejado
-    6. (Opcional) Insira sua carteira personalizada para análise (*apenas ativos que foram selecionados para otimização anterior*)
-    7. Clique em "Calcular Portfólios"
-    8. Explore os resultados nas quatro abas:
+    5. (Opcional) Defina um limite máximo de peso por ativo para uma otimização mais diversificada
+    6. Defina o retorno alvo mensal desejado
+    7. (Opcional) Insira sua carteira personalizada para análise (*apenas ativos que foram selecionados para otimização anterior*)
+    8. Clique em "Calcular Portfólios"
+    9. Explore os resultados nas quatro abas:
        - **Fronteira Eficiente**: Visualização gráfica de todas as estratégias
        - **Estratégias**: Comparação detalhada e pesos de cada estratégia
        - **Ativos Individuais**: Métricas e correlações dos ativos
