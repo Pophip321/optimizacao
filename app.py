@@ -54,7 +54,7 @@ with st.sidebar:
     
     st.subheader("4️⃣ Limite Máximo por Ativo (%)")
     limite_peso = st.slider(
-        "Escolha o limite máximo permitido (0% = desativar)",
+        "Escolha o limite máximo permitido para uma carteira de pesos restritos",
         min_value=0,
         max_value=100,
         value=25,
@@ -308,30 +308,38 @@ if calcular:
                     bounds_limitados = tuple((0.0, limite_peso) for _ in range(n))
 
                     # --- Máx Sharpe limitado
-                    res_maxsharpe_lim = minimize(
-                        sharpe_negativo,
-                        w0,
-                        method="SLSQP",
-                        bounds=bounds_limitados,
-                        constraints={'type': 'eq', 'fun': soma_pesos}
-                    )
-                    pesos_max_sharpe_lim = res_maxsharpe_lim.x
-                    ret_max_sharpe_lim = retorno_portfolio(pesos_max_sharpe_lim)
-                    vol_max_sharpe_lim = risco_portfolio(pesos_max_sharpe_lim)
-                    sharpe_max_sharpe_lim = ret_max_sharpe_lim / vol_max_sharpe_lim
+                    try:
+                        res_maxsharpe_lim = minimize(
+                            sharpe_negativo,
+                            w0,
+                            method="SLSQP",
+                            bounds=bounds_limitados,
+                            constraints={'type': 'eq', 'fun': soma_pesos}
+                        )
+                        if res_maxsharpe_lim.success:
+                            pesos_max_sharpe_lim = res_maxsharpe_lim.x
+                            ret_max_sharpe_lim = retorno_portfolio(pesos_max_sharpe_lim)
+                            vol_max_sharpe_lim = risco_portfolio(pesos_max_sharpe_lim)
+                            sharpe_max_sharpe_lim = ret_max_sharpe_lim / vol_max_sharpe_lim if vol_max_sharpe_lim != 0 else 0
+                    except:
+                        pass
 
                     # --- Min Vol limitado
-                    res_minvol_lim = minimize(
-                        risco_portfolio,
-                        w0,
-                        method="SLSQP",
-                        bounds=bounds_limitados,
-                        constraints={'type': 'eq', 'fun': soma_pesos}
-                    )
-                    pesos_min_vol_lim = res_minvol_lim.x
-                    ret_min_vol_lim = retorno_portfolio(pesos_min_vol_lim)
-                    vol_min_vol_lim = risco_portfolio(pesos_min_vol_lim)
-                    sharpe_min_vol_lim = ret_min_vol_lim / vol_min_vol_lim
+                    try:
+                        res_minvol_lim = minimize(
+                            risco_portfolio,
+                            w0,
+                            method="SLSQP",
+                            bounds=bounds_limitados,
+                            constraints={'type': 'eq', 'fun': soma_pesos}
+                        )
+                        if res_minvol_lim.success:
+                            pesos_min_vol_lim = res_minvol_lim.x
+                            ret_min_vol_lim = retorno_portfolio(pesos_min_vol_lim)
+                            vol_min_vol_lim = risco_portfolio(pesos_min_vol_lim)
+                            sharpe_min_vol_lim = ret_min_vol_lim / vol_min_vol_lim if vol_min_vol_lim != 0 else 0
+                    except:
+                        pass
 
 
 
@@ -477,17 +485,25 @@ if calcular:
             # =============================================================
             def calcular_retorno_acumulado(pesos):
                 """Calcula o retorno acumulado no período para uma carteira"""
+                if pesos is None:
+                    return None
                 retornos_carteira = retornos.dot(pesos)
                 retorno_acumulado = (1 + retornos_carteira).prod() - 1
                 return retorno_acumulado
-            
+
             # Calcular retornos acumulados para cada estratégia
             ret_acum_max_sharpe = calcular_retorno_acumulado(pesos_max_sharpe)
             ret_acum_min_vol = calcular_retorno_acumulado(pesos_min_vol)
             ret_acum_target = calcular_retorno_acumulado(w_target)
-            ret_acum_max_sharpe_lim = calcular_retorno_acumulado(pesos_max_sharpe_lim)
-            ret_acum_min_vol_lim = calcular_retorno_acumulado(pesos_min_vol_lim)
-            
+
+            # Só calcular para carteiras limitadas se existirem
+            if limite_peso > 0:
+                ret_acum_max_sharpe_lim = calcular_retorno_acumulado(pesos_max_sharpe_lim)
+                ret_acum_min_vol_lim = calcular_retorno_acumulado(pesos_min_vol_lim)
+            else:
+                ret_acum_max_sharpe_lim = None
+                ret_acum_min_vol_lim = None
+
             if pesos_user is not None:
                 ret_acum_user = calcular_retorno_acumulado(pesos_user)
             
@@ -523,7 +539,7 @@ if calcular:
             }
 
             # Adiciona carteiras limitadas apenas se existirem
-            if limite_peso > 0:
+            if limite_peso > 0 and ret_acum_max_sharpe_lim is not None and ret_acum_min_vol_lim is not None:
                 estrategias_data['Estratégia'].extend(['Sharpe Limitado', 'Vol Min Limitada'])
                 estrategias_data['Retorno Mensal (%)'].extend([ret_max_sharpe_lim * 100, ret_min_vol_lim * 100])
                 estrategias_data['Volatilidade (%)'].extend([vol_max_sharpe_lim * 100, vol_min_vol_lim * 100])
@@ -537,7 +553,7 @@ if calcular:
                 estrategias_data['Volatilidade (%)'].append(vol_user * 100)
                 estrategias_data['Sharpe Ratio'].append(sharpe_user)
                 estrategias_data['Retorno Acumulado (%)'].append(ret_acum_user * 100)
-            
+                        
             df_estrategias = pd.DataFrame(estrategias_data)
             df_estrategias = df_estrategias.sort_values('Sharpe Ratio', ascending=False)
             
@@ -743,17 +759,17 @@ if calcular:
             # =============================================================
             st.markdown("---")
             st.subheader("Configurações de Limite de Peso")
-            
+
             col_lim1, col_lim2 = st.columns(2)
-            
+
             with col_lim1:
-                # Mostra o limite que o usuário escolheu
-                limite_escolhido = st.slider.__defaults__[0] if 'limite_peso' not in locals() else limite_peso * 100
-                st.metric("Limite Escolhido pelo Usuário", f"{limite_escolhido:.1f}%")
-            
+                # Mostra o limite que o usuário escolheu (convertendo de volta para porcentagem)
+                limite_escolhido_pct = limite_peso * 100
+                st.metric("Limite Escolhido pelo Usuário", f"{limite_escolhido_pct:.1f}%")
+
             with col_lim2:
                 if limite_peso > 0:
-                    # Calcula o limite efetivamente aplicado (pode ser diferente do escolhido devido ao mínimo necessário)
+                    # Calcula o limite efetivamente aplicado
                     limite_efetivo = limite_peso * 100
                     limite_minimo_necessario = (1 / len(ativos_validos)) * 100
                     
