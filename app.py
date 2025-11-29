@@ -134,39 +134,60 @@ if calcular:
             
             with st.spinner("Baixando dados históricos..."):
                 # =============================================================
-                # CORREÇÃO SIMPLES: GARANTIR DATAS COM COTAÇÕES VÁLIDAS
+                # AJUSTE AUTOMÁTICO DAS DATAS PARA GARANTIR MESES COMPLETOS
                 # =============================================================
                 
-                def garantir_data_util(data):
-                    """Garante que a data seja um dia útil com cotação"""
-                    # Tenta baixar dados para a data exata
-                    teste_data = yf.download(lista_acoes[0], start=data, end=data + dt.timedelta(days=1), progress=False)
-                    if not teste_data.empty:
-                        return data  # Data já é válida
+                def ajustar_data_mes(data, eh_final=False):
+                    """Ajusta a data para a última cotação disponível do mês"""
+                    hoje = dt.date.today()
                     
-                    # Se não tem dados, busca a data mais recente disponível
-                    teste_7dias = yf.download(lista_acoes[0], start=data - dt.timedelta(days=7), end=data + dt.timedelta(days=1), progress=False)
-                    if not teste_7dias.empty:
-                        return teste_7dias.index[-1].date()
+                    # Se é data final e é mês atual, usa ontem
+                    if eh_final and data.year == hoje.year and data.month == hoje.month:
+                        return hoje - dt.timedelta(days=1)
                     
-                    return data  # Retorna original se não encontrar
+                    # Para outros casos, busca a última cotação disponível do mês
+                    try:
+                        # Testa com o primeiro ativo válido
+                        ticker_teste = lista_acoes[0]
+                        t = yf.Ticker(ticker_teste)
+                        
+                        # Define período de busca (todo o mês da data)
+                        inicio_mes = dt.datetime(data.year, data.month, 1)
+                        if data.month == 12:
+                            fim_mes = dt.datetime(data.year + 1, 1, 1)
+                        else:
+                            fim_mes = dt.datetime(data.year, data.month + 1, 1)
+                        
+                        hist = t.history(start=inicio_mes, end=fim_mes)
+                        if not hist.empty:
+                            return hist.index[-1].date()
+                        
+                    except:
+                        pass
+                    
+                    # Fallback: se não conseguir, usa o último dia útil provável do mês
+                    return data.replace(day=1) + dt.timedelta(days=32)
+                    data_ajustada = data_ajustada.replace(day=1) - dt.timedelta(days=1)
+                    return data_ajustada
                 
-                # Ajusta datas para garantir dias úteis
-                data_inicio_ajustada = garantir_data_util(data_inicio)
-                data_fim_ajustada = garantir_data_util(data_fim)
+                # Aplica os ajustes
+                data_inicio_ajustada = ajustar_data_mes(data_inicio, eh_final=False)
+                data_fim_ajustada = ajustar_data_mes(data_fim, eh_final=True)
                 
                 # Mostra ajuste se necessário
                 if data_inicio_ajustada != data_inicio or data_fim_ajustada != data_fim:
-                    st.info(f"🔍 **Ajuste automático para dias úteis:**\n"
-                           f"- Data inicial: {data_inicio} → {data_inicio_ajustada}\n"
-                           f"- Data final: {data_fim} → {data_fim_ajustada}")
+                    st.info(f"🔍 **Ajuste automático para cotações disponíveis:**\n"
+                        f"- Data inicial: {data_inicio} → {data_inicio_ajustada}\n"
+                        f"- Data final: {data_fim} → {data_fim_ajustada}")
                 
+                # Usa as datas ajustadas
                 inicio = dt.datetime.combine(data_inicio_ajustada, dt.datetime.min.time())
                 fim = dt.datetime.combine(data_fim_ajustada, dt.datetime.min.time())
                 
                 # Baixa dados com datas ajustadas
                 dados = yf.download(lista_acoes, start=inicio, end=fim, auto_adjust=usar_ajustada, progress=False)
                 
+                # Resto do código original...
                 if usar_ajustada:
                     if hasattr(dados.columns, "levels") and "Adj Close" in dados.columns.levels[0]:
                         precos = dados["Adj Close"].copy()
@@ -178,7 +199,7 @@ if calcular:
                 if isinstance(precos.columns, pd.MultiIndex):
                     precos.columns = precos.columns.get_level_values(0)
                 
-                # Pega a última cotação de cada mês
+                # Pega a última cotação de cada mês (já garantido pelos ajustes)
                 precos_mensais = precos.resample("ME").last()
                 
                 # Remove meses onde não há dados suficientes
