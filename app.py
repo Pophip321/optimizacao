@@ -813,81 +813,73 @@ if calcular:
             st.plotly_chart(fig_corr, use_container_width=True)
         
         with tab4:
-        st.subheader("Informações Detalhadas")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Período de Análise", f"{data_inicio} a {data_fim}, com {len(retornos)} meses")
-        with col2:
-            st.metric("Número de Ativos", len(ativos_validos))
-        with col3:
-            st.metric("Meses Efetivos", numero_meses_efetivo)
-        
-        st.markdown("---")
-        
-        col4, col5, col6 = st.columns(3)
-        with col4:
-            st.metric("Tipo de Cotação", "Ajustada" if usar_ajustada else "Simples")
-        with col5:
-            st.metric("Tipo de Retorno", "Logarítmico" if usar_log else "Simples")
-        with col6:
-            st.metric("Retorno Alvo", f"{target_return * 100:.2f}%")
-        
-        # =============================================================
-        # CONFIGURAÇÕES DE LIMITE DE PESO
-        # =============================================================
-        st.markdown("---")
-        st.subheader("Configurações de Limite de Peso")
-        
-        col_lim1, col_lim2 = st.columns(2)
-        
-        with col_lim1:
-            # Mostra o limite que o usuário escolheu
-            limite_escolhido_pct = limite_peso * 100
-            st.metric("Limite Escolhido pelo Usuário", f"{limite_escolhido_pct:.1f}%")
-        
-        with col_lim2:
-            if limite_peso > 0:
-                # Calcula o limite efetivamente aplicado
-                limite_efetivo = limite_peso * 100
-                limite_minimo_necessario = (1 / len(ativos_validos)) * 100
-                
-                if limite_efetivo < limite_minimo_necessario:
-                    st.metric("Limite Efetivamente Aplicado", f"{limite_minimo_necessario:.1f}%")
-                    st.caption(f"*Ajustado do limite escolhido ({limite_efetivo:.1f}%) para o mínimo necessário*")
+            st.subheader("Informações Detalhadas")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Período de Análise", f"{data_inicio} a {data_fim}, com {len(retornos)} meses")
+            with col2:
+                st.metric("Número de Ativos", len(ativos_validos))
+            
+            st.markdown("---")
+            
+            col4, col5, col6 = st.columns(3)
+            with col4:
+                st.metric("Tipo de Cotação", "Ajustada" if usar_ajustada else "Simples")
+            with col5:
+                st.metric("Tipo de Retorno", "Logarítmico" if usar_log else "Simples")
+            with col6:
+                st.metric("Retorno Alvo", f"{target_return * 100:.2f}%")
+            
+            # =============================================================
+            # NOVA SEÇÃO: CONFIGURAÇÕES DE LIMITE DE PESO
+            # =============================================================
+            st.markdown("---")
+            st.subheader("Configurações de Limite de Peso")
+
+            col_lim1, col_lim2 = st.columns(2)
+
+            with col_lim1:
+                # Mostra o limite que o usuário escolheu (convertendo de volta para porcentagem)
+                limite_escolhido_pct = limite_peso * 100
+                st.metric("Limite Escolhido pelo Usuário", f"{limite_escolhido_pct:.1f}%")
+
+            with col_lim2:
+                if limite_peso > 0:
+                    # Calcula o limite efetivamente aplicado
+                    limite_efetivo = limite_peso * 100
+                    limite_minimo_necessario = (1 / len(ativos_validos)) * 100
+                    
+                    if limite_efetivo < limite_minimo_necessario:
+                        st.metric("Limite Efetivamente Aplicado", f"{limite_minimo_necessario:.1f}%")
+                        st.caption(f"*Ajustado do limite escolhido ({limite_efetivo:.1f}%) para o mínimo necessário*")
+                    else:
+                        st.metric("Limite Efetivamente Aplicado", f"{limite_efetivo:.1f}%")
+                        st.caption("*Limite aplicado conforme escolhido pelo usuário*")
                 else:
-                    st.metric("Limite Efetivamente Aplicado", f"{limite_efetivo:.1f}%")
-                    st.caption("*Limite aplicado conforme escolhido pelo usuário*")
+                    st.metric("Limite Efetivamente Aplicado", "Desativado")
+                    st.caption("*Carteiras limitadas não foram calculadas*")
+            
+            # Informação adicional sobre o limite
+            if limite_peso > 0:
+                st.info(f"""
+                **📊 Informações sobre o limite de peso:**
+                - **Número de ativos:** {len(ativos_validos)}
+                - **Limite mínimo necessário:** {(1/len(ativos_validos))*100:.1f}%
+                - **Status:** Carteiras limitadas **ativas**
+                - **Estratégias calculadas:** Máximo Sharpe Limitado e Mínima Volatilidade Limitada
+                """)
             else:
-                st.metric("Limite Efetivamente Aplicado", "Desativado")
-                st.caption("*Carteiras limitadas não foram calculadas*")
-        
-        # Informação adicional sobre o período
-        st.markdown("---")
-        st.subheader("Informações do Período")
-        
-        col_per1, col_per2 = st.columns(2)
-        
-        with col_per1:
-            st.metric("Primeiro Mês Disponível", precos_mensais.index[0].strftime('%b/%Y'))
-            st.metric("Último Mês Disponível", precos_mensais.index[-1].strftime('%b/%Y'))
-        
-        with col_per2:
-            st.metric("Total de Meses Completos", numero_meses_efetivo)
-            st.metric("Meses com Retornos", len(retornos))
-        
-        st.info(f"""
-        **📊 Resumo do Período:**
-        - **Período solicitado:** {data_inicio_original} a {data_fim_original}
-        - **Período efetivo:** {precos_mensais.index[0].strftime('%d/%m/%Y')} a {precos_mensais.index[-1].strftime('%d/%m/%Y')}
-        - **Meses com dados completos:** {numero_meses_efetivo}
-        - **Meses utilizados nos cálculos:** {len(retornos)}
-        """)
-        
-        st.markdown("---")
-        st.subheader("Ativos Analisados")
-        ativos_display = [a.replace('.SA', '') for a in ativos_validos]
-        st.write(", ".join(ativos_display))
+                st.info("""
+                **📊 Informações sobre o limite de peso:**
+                - **Status:** Carteiras limitadas **desativadas**
+                - **Estratégias calculadas:** Apenas as estratégias principais (sem limite)
+                """)
+            
+            st.markdown("---")
+            st.subheader("Ativos Analisados")
+            ativos_display = [a.replace('.SA', '') for a in ativos_validos]
+            st.write(", ".join(ativos_display))
     
     except Exception as e:
         st.error(f"Erro durante o processamento: {str(e)}")
