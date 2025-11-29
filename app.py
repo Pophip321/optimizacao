@@ -90,162 +90,165 @@ with st.sidebar:
 if calcular:
     try:
         with st.spinner("Processando dados..."):
-            # =============================================================
-            # CORREÇÃO: BUSCAR ÚLTIMAS COTAÇÕES DISPONÍVEIS
-            # =============================================================
-            
-            def get_ultima_data_disponivel(ticker, data_limite):
-                """Busca a última data disponível para um ticker até a data limite"""
-                try:
-                    t = yf.Ticker(ticker)
-                    # Busca dados de 30 dias antes até 5 dias depois da data limite
-                    start_date = data_limite - dt.timedelta(days=30)
-                    end_date = data_limite + dt.timedelta(days=5)
-                    hist = t.history(start=start_date, end=end_date)
-                    if not hist.empty:
-                        # Filtra datas até a data limite
-                        datas_disponiveis = hist[hist.index.date <= data_limite]
-                        if not datas_disponiveis.empty:
-                            return datas_disponiveis.index[-1].date()
-                        # Se não há dados até a data limite, pega a data mais recente disponível
-                        return hist.index[-1].date()
-                    return data_limite
-                except:
-                    return data_limite
-            
-            def ajustar_datas_limites(data_inicio, data_fim, ativos):
-                """Ajusta as datas inicial e final para as últimas cotações disponíveis"""
-                data_inicio_ajustada = data_inicio
-                data_fim_ajustada = data_fim
-                
-                if ativos:
-                    # Testa com o primeiro ativo para ajustar as datas
-                    ticker_teste = ativos[0]
-                    
-                    # Ajusta data final - busca última cotação disponível
-                    data_fim_disponivel = get_ultima_data_disponivel(ticker_teste, data_fim)
-                    data_fim_ajustada = data_fim_disponivel
-                    
-                    # Ajusta data inicial - busca primeira cotação disponível
-                    try:
-                        t = yf.Ticker(ticker_teste)
-                        # Busca de 1 ano antes até 30 dias depois da data inicial
-                        hist_inicio = t.history(start=data_inicio - dt.timedelta(days=365),
-                                              end=data_inicio + dt.timedelta(days=30))
-                        if not hist_inicio.empty:
-                            # Filtra datas a partir da data inicial
-                            datas_apos_inicio = hist_inicio[hist_inicio.index.date >= data_inicio]
-                            if not datas_apos_inicio.empty:
-                                data_inicio_ajustada = datas_apos_inicio.index[0].date()
-                            else:
-                                # Se não há dados após a data inicial, pega a última disponível
-                                data_inicio_ajustada = hist_inicio.index[-1].date()
-                    except:
-                        pass
-                
-                return data_inicio_ajustada, data_fim_ajustada
-            
-            # Aplica o ajuste automático das datas
-            ativos_digitados = [linha.strip().upper() for linha in ativos_input.split('\n') if linha.strip()]
-            ativos_digitados = list(dict.fromkeys(ativos_digitados))
-            
-            if ativos_digitados:
-                # Prepara lista de tickers para teste
-                tickers_teste = [t + ".SA" for t in ativos_digitados[:1]]  # Usa primeiro ativo para teste
-                data_inicio_ajustada, data_fim_ajustada = ajustar_datas_limites(data_inicio, data_fim, tickers_teste)
-                
-                # Mostra ajuste se necessário
-                if data_inicio_ajustada != data_inicio or data_fim_ajustada != data_fim:
-                    st.info(f"🔍 **Ajuste automático de datas:**\n"
-                           f"- Data inicial: {data_inicio} → {data_inicio_ajustada}\n"
-                           f"- Data final: {data_fim} → {data_fim_ajustada}")
-                
-                data_inicio = data_inicio_ajustada
-                data_fim = data_fim_ajustada
-            
-            # Continua com as datas ajustadas
-            inicio = dt.datetime.combine(data_inicio, dt.datetime.min.time())
-            fim = dt.datetime.combine(data_fim, dt.datetime.min.time())
-            
-            # Resto do código de validação de ativos...
-            st.info(f"Validando {len(ativos_digitados)} ativos no Yahoo Finance...")
-            
-            ativos_ok = []
-            ativos_errados = []
-            
-            progress_bar = st.progress(0)
-            for idx, ticker in enumerate(ativos_digitados):
-                yf_ticker = ticker + ".SA"
-                t = yf.Ticker(yf_ticker)
-                try:
-                    # Testa se o ativo tem dados no período ajustado
-                    info = t.history(start=inicio - dt.timedelta(days=7), 
-                                   end=fim + dt.timedelta(days=1),
-                                   period="1d")
-                    if info is None or info.empty:
-                        ativos_errados.append(ticker)
-                    else:
-                        ativos_ok.append(yf_ticker)
-                except:
+        # Primeiro valida os ativos básicos
+        ativos_digitados = [linha.strip().upper() for linha in ativos_input.split('\n') if linha.strip()]
+        ativos_digitados = list(dict.fromkeys(ativos_digitados))
+        
+        if not ativos_digitados:
+            st.error("Por favor, insira pelo menos um ativo.")
+            st.stop()
+        
+        st.info(f"Validando {len(ativos_digitados)} ativos no Yahoo Finance...")
+        
+        ativos_ok = []
+        ativos_errados = []
+        
+        progress_bar = st.progress(0)
+        for idx, ticker in enumerate(ativos_digitados):
+            yf_ticker = ticker + ".SA"
+            t = yf.Ticker(yf_ticker)
+            try:
+                # Teste simples - busca dados recentes
+                info = t.history(period="1mo")
+                if info is None or info.empty:
                     ativos_errados.append(ticker)
-                progress_bar.progress((idx + 1) / len(ativos_digitados))
+                else:
+                    ativos_ok.append(yf_ticker)
+            except:
+                ativos_errados.append(ticker)
+            progress_bar.progress((idx + 1) / len(ativos_digitados))
+        
+        progress_bar.empty()
+        
+        if ativos_errados:
+            st.warning(f"⚠️ Ativos não encontrados: {', '.join(ativos_errados)}")
+        
+        if not ativos_ok:
+            st.error("Nenhum ativo válido encontrado!")
+            st.stop()
+        
+        lista_acoes = ativos_ok
+        st.success(f"✅ {len(lista_acoes)} ativos válidos: {', '.join([a.replace('.SA', '') for a in lista_acoes])}")
+
+        # =============================================================
+        # CORREÇÃO: BUSCAR ÚLTIMAS COTAÇÕES DISPONÍVEIS (APÓS VALIDAR ATIVOS)
+        # =============================================================
+        
+        def get_ultima_data_disponivel(ticker, data_limite):
+            """Busca a última data disponível para um ticker até a data limite"""
+            try:
+                t = yf.Ticker(ticker)
+                # Busca dados de 30 dias antes até 5 dias depois da data limite
+                start_date = data_limite - dt.timedelta(days=30)
+                end_date = data_limite + dt.timedelta(days=5)
+                hist = t.history(start=start_date, end=end_date)
+                if not hist.empty:
+                    # Filtra datas até a data limite
+                    datas_disponiveis = hist[hist.index.date <= data_limite]
+                    if not datas_disponiveis.empty:
+                        return datas_disponiveis.index[-1].date()
+                    # Se não há dados até a data limite, pega a data mais recente disponível
+                    return hist.index[-1].date()
+                return data_limite
+            except:
+                return data_limite
+        
+        def ajustar_datas_limites(data_inicio, data_fim, ativos):
+            """Ajusta as datas inicial e final para as últimas cotações disponíveis"""
+            data_inicio_ajustada = data_inicio
+            data_fim_ajustada = data_fim
             
-            progress_bar.empty()
+            if ativos:
+                # Testa com o primeiro ativo válido para ajustar as datas
+                ticker_teste = ativos[0]
+                
+                # Ajusta data final - busca última cotação disponível
+                data_fim_disponivel = get_ultima_data_disponivel(ticker_teste, data_fim)
+                data_fim_ajustada = data_fim_disponivel
+                
+                # Ajusta data inicial - busca primeira cotação disponível
+                try:
+                    t = yf.Ticker(ticker_teste)
+                    # Busca de 1 ano antes até 30 dias depois da data inicial
+                    hist_inicio = t.history(start=data_inicio - dt.timedelta(days=365),
+                                          end=data_inicio + dt.timedelta(days=30))
+                    if not hist_inicio.empty:
+                        # Filtra datas a partir da data inicial
+                        datas_apos_inicio = hist_inicio[hist_inicio.index.date >= data_inicio]
+                        if not datas_apos_inicio.empty:
+                            data_inicio_ajustada = datas_apos_inicio.index[0].date()
+                        else:
+                            # Se não há dados após a data inicial, pega a última disponível
+                            data_inicio_ajustada = hist_inicio.index[-1].date()
+                except:
+                    pass
             
-            if ativos_errados:
-                st.warning(f"⚠️ Ativos não encontrados: {', '.join(ativos_errados)}")
+            return data_inicio_ajustada, data_fim_ajustada
+        
+        # Aplica o ajuste automático das datas APÓS validar ativos
+        data_inicio_ajustada, data_fim_ajustada = ajustar_datas_limites(data_inicio, data_fim, lista_acoes)
+        
+        # Mostra ajuste se necessário
+        if data_inicio_ajustada != data_inicio or data_fim_ajustada != data_fim:
+            st.info(f"🔍 **Ajuste automático de datas:**\n"
+                   f"- Data inicial: {data_inicio} → {data_inicio_ajustada}\n"
+                   f"- Data final: {data_fim} → {data_fim_ajustada}")
+        
+        data_inicio = data_inicio_ajustada
+        data_fim = data_fim_ajustada
+        
+        # Continua com as datas ajustadas
+        inicio = dt.datetime.combine(data_inicio, dt.datetime.min.time())
+        fim = dt.datetime.combine(data_fim, dt.datetime.min.time())
+        
+        with st.spinner("Baixando dados históricos..."):
+            # Agora baixa com as datas ajustadas
+            dados = yf.download(lista_acoes, start=inicio, end=fim, auto_adjust=usar_ajustada, progress=False)
             
-            if not ativos_ok:
-                st.error("Nenhum ativo válido encontrado!")
+            if dados.empty:
+                st.error("Não foi possível baixar dados históricos para o período selecionado.")
                 st.stop()
             
-            lista_acoes = ativos_ok
-            st.success(f"✅ {len(lista_acoes)} ativos válidos: {', '.join([a.replace('.SA', '') for a in lista_acoes])}")
-            
-            with st.spinner("Baixando dados históricos..."):
-                # Agora baixa com as datas ajustadas
-                dados = yf.download(lista_acoes, start=inicio, end=fim, auto_adjust=usar_ajustada, progress=False)
-                
-                if usar_ajustada:
-                    if hasattr(dados.columns, "levels") and "Adj Close" in dados.columns.levels[0]:
-                        precos = dados["Adj Close"].copy()
-                    else:
-                        precos = dados["Close"].copy()
+            if usar_ajustada:
+                if hasattr(dados.columns, "levels") and "Adj Close" in dados.columns.levels[0]:
+                    precos = dados["Adj Close"].copy()
                 else:
                     precos = dados["Close"].copy()
-                
-                if isinstance(precos.columns, pd.MultiIndex):
-                    precos.columns = precos.columns.get_level_values(0)
-                
-                # Pega a última cotação de cada mês
-                precos_mensais = precos.resample("ME").last()
-                
-                # Remove meses onde não há dados suficientes
-                meses_por_ativo = precos_mensais.count()
-                ativos_validos_24m = meses_por_ativo[meses_por_ativo >= 24].index
-                precos_mensais = precos_mensais[ativos_validos_24m]
-                
-                if len(ativos_validos_24m) == 0:
-                    st.error("Nenhum ativo possui ao menos 24 meses de histórico. Ajuste a janela temporal.")
-                    st.stop()
-                
-                # SALVA O NÚMERO DE MESES PARA USAR NO TAB4
-                numero_meses_efetivo = len(precos_mensais)
-                
-                if usar_log:
-                    retornos = np.log(precos_mensais / precos_mensais.shift(1))
-                else:
-                    retornos = precos_mensais.pct_change()
-                
-                retornos = retornos.dropna(how="all")
-                retornos = retornos.dropna(axis=1, how="all")
-                
-                ativos_validos = list(retornos.columns)
-                n = len(ativos_validos)
-                
-                if n == 0:
-                    st.error("Nenhum ativo com retornos válidos após cálculo.")
-                    st.stop()
+            else:
+                precos = dados["Close"].copy()
+            
+            if isinstance(precos.columns, pd.MultiIndex):
+                precos.columns = precos.columns.get_level_values(0)
+            
+            # Pega a última cotação de cada mês
+            precos_mensais = precos.resample("ME").last()
+            
+            # Remove meses onde não há dados suficientes
+            meses_por_ativo = precos_mensais.count()
+            ativos_validos_24m = meses_por_ativo[meses_por_ativo >= 24].index
+            precos_mensais = precos_mensais[ativos_validos_24m]
+            
+            if len(ativos_validos_24m) == 0:
+                st.error("Nenhum ativo possui ao menos 24 meses de histórico. Ajuste a janela temporal.")
+                st.stop()
+            
+            # SALVA O NÚMERO DE MESES PARA USAR NO TAB4
+            numero_meses_efetivo = len(precos_mensais)
+            
+            if usar_log:
+                retornos = np.log(precos_mensais / precos_mensais.shift(1))
+            else:
+                retornos = precos_mensais.pct_change()
+            
+            retornos = retornos.dropna(how="all")
+            retornos = retornos.dropna(axis=1, how="all")
+            
+            ativos_validos = list(retornos.columns)
+            n = len(ativos_validos)
+            
+            if n == 0:
+                st.error("Nenhum ativo com retornos válidos após cálculo.")
+                st.stop()
             
             with st.spinner("Calculando métricas..."):
                 media_retorno = retornos.mean()
