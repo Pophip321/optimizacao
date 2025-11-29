@@ -57,7 +57,7 @@ with st.sidebar:
         "Escolha o limite máximo permitido para uma carteira de pesos restritos",
         min_value=0,
         max_value=100,
-        value=25,
+        value=0,
         step=1,
         help="0% = desativa carteiras limitadas | 1-100% = peso máximo por ativo"
     ) / 100
