@@ -54,12 +54,12 @@ with st.sidebar:
     
     st.subheader("4️⃣ Limite Máximo por Ativo (%)")
     limite_peso = st.slider(
-        "Escolha o limite máximo permitido",
-        min_value=5,
-        max_value=50,
+        "Escolha o limite máximo permitido (0% = desativar)",
+        min_value=0,
+        max_value=100,
         value=25,
         step=1,
-        help="Define o peso máximo permitido por ativo nas carteiras otimizadas limitadas."
+        help="0% = desativa carteiras limitadas | 1-100% = peso máximo por ativo"
     ) / 100
 
 
@@ -287,40 +287,51 @@ if calcular:
 
 
                 # =============================================================
-                # 5) OTIMIZAÇÕES COM LIMITE DE PESO
+                # 5) OTIMIZAÇÕES COM LIMITE DE PESO (SÓ SE limite_peso > 0)
                 # =============================================================
 
-                limite_necessario = 1 / n
-                if limite_peso < limite_necessario:
-                    limite_peso = limite_necessario
+                # Inicializar variáveis com None
+                pesos_max_sharpe_lim = None
+                ret_max_sharpe_lim = None
+                vol_max_sharpe_lim = None
+                sharpe_max_sharpe_lim = None
+                pesos_min_vol_lim = None
+                ret_min_vol_lim = None
+                vol_min_vol_lim = None
+                sharpe_min_vol_lim = None
 
-                bounds_limitados = tuple((0.0, limite_peso) for _ in range(n))
+                if limite_peso > 0:
+                    limite_necessario = 1 / n
+                    if limite_peso < limite_necessario:
+                        limite_peso = limite_necessario
 
-                # --- Máx Sharpe limitado
-                res_maxsharpe_lim = minimize(
-                    sharpe_negativo,
-                    w0,
-                    method="SLSQP",
-                    bounds=bounds_limitados,
-                    constraints={'type': 'eq', 'fun': soma_pesos}
-                )
-                pesos_max_sharpe_lim = res_maxsharpe_lim.x
-                ret_max_sharpe_lim = retorno_portfolio(pesos_max_sharpe_lim)
-                vol_max_sharpe_lim = risco_portfolio(pesos_max_sharpe_lim)
-                sharpe_max_sharpe_lim = ret_max_sharpe_lim / vol_max_sharpe_lim
+                    bounds_limitados = tuple((0.0, limite_peso) for _ in range(n))
 
-                # --- Min Vol limitado
-                res_minvol_lim = minimize(
-                    risco_portfolio,
-                    w0,
-                    method="SLSQP",
-                    bounds=bounds_limitados,
-                    constraints={'type': 'eq', 'fun': soma_pesos}
-                )
-                pesos_min_vol_lim = res_minvol_lim.x
-                ret_min_vol_lim = retorno_portfolio(pesos_min_vol_lim)
-                vol_min_vol_lim = risco_portfolio(pesos_min_vol_lim)
-                sharpe_min_vol_lim = ret_min_vol_lim / vol_min_vol_lim
+                    # --- Máx Sharpe limitado
+                    res_maxsharpe_lim = minimize(
+                        sharpe_negativo,
+                        w0,
+                        method="SLSQP",
+                        bounds=bounds_limitados,
+                        constraints={'type': 'eq', 'fun': soma_pesos}
+                    )
+                    pesos_max_sharpe_lim = res_maxsharpe_lim.x
+                    ret_max_sharpe_lim = retorno_portfolio(pesos_max_sharpe_lim)
+                    vol_max_sharpe_lim = risco_portfolio(pesos_max_sharpe_lim)
+                    sharpe_max_sharpe_lim = ret_max_sharpe_lim / vol_max_sharpe_lim
+
+                    # --- Min Vol limitado
+                    res_minvol_lim = minimize(
+                        risco_portfolio,
+                        w0,
+                        method="SLSQP",
+                        bounds=bounds_limitados,
+                        constraints={'type': 'eq', 'fun': soma_pesos}
+                    )
+                    pesos_min_vol_lim = res_minvol_lim.x
+                    ret_min_vol_lim = retorno_portfolio(pesos_min_vol_lim)
+                    vol_min_vol_lim = risco_portfolio(pesos_min_vol_lim)
+                    sharpe_min_vol_lim = ret_min_vol_lim / vol_min_vol_lim
 
 
 
@@ -369,58 +380,28 @@ if calcular:
             
             fig = go.Figure()
             
-            # Monte Carlo removido
-            # fig.add_trace(go.Scatter(
-            #     x=tabela_volatilidades * 100,
-            #     y=tabela_retornos * 100,
-            #     mode='markers',
-            #     marker=dict(
-            #         size=3,
-            #         color=tabela_sharpe,
-            #         colorscale='Viridis',
-            #         showscale=True,
-            #         colorbar=dict(title="Sharpe"),
-            #         opacity=0.4
-            #     ),
-            #     name='Monte Carlo',
-            #     hovertemplate='Vol: %{x:.2f}%<br>Ret: %{y:.2f}%<extra></extra>'
-            # ))
-            
+            # =============================================================
+            # 1) FRONTEIRA EFICIENTE
+            # =============================================================
             if len(fronteira_vols) > 0:
                 fig.add_trace(go.Scatter(
-                    x=np.array(fronteira_vols) * 100,
-                    y=np.array(fronteira_rets) * 100,
+                    x=np.array(fronteira_vols) * 100,  # Converte volatilidade para %
+                    y=np.array(fronteira_rets) * 100,  # Converte retorno para %
                     mode='lines',
                     line=dict(color='orange', width=3),
                     name='Fronteira Eficiente'
                 ))
             
+            # =============================================================
+            # 2) ESTRATÉGIAS PRINCIPAIS (SEMPRE EXISTEM)
+            # =============================================================
             estrategias = [
                 (vol_max_sharpe * 100, ret_max_sharpe * 100, 'Máx Sharpe', 'red', 12),
                 (vol_min_vol * 100, ret_min_vol * 100, 'Mín Risco', 'blue', 12),
                 (vol_target * 100, ret_target * 100, 'Target', 'white', 12),
             ]
-            # Estratégias limitadas
-            estrategias_limitadas = [
-                (vol_max_sharpe_lim * 100, ret_max_sharpe_lim * 100, 'Sharpe Limitado', 'blue', 'cross'),
-                (vol_min_vol_lim   * 100, ret_min_vol_lim   * 100, 'MinVol Limitado', 'red',  'cross')
-            ]
-
-            for vol, ret, nome, cor, simbolo in estrategias_limitadas:
-                fig.add_trace(go.Scatter(
-                    x=[vol],
-                    y=[ret],
-                    mode='markers',
-                    marker=dict(
-                        size=14,
-                        color=cor,
-                        symbol=simbolo,
-                        line=dict(color='black', width=2)
-                    ),
-                    name=nome,
-                    hovertemplate=f'{nome}<br>Vol: %{{x:.2f}}%<br>Ret: %{{y:.2f}}%<extra></extra>'
-                ))
-
+            
+            # Adiciona as estratégias principais ao gráfico
             for vol, ret, nome, cor, tamanho in estrategias:
                 fig.add_trace(go.Scatter(
                     x=[vol],
@@ -431,23 +412,58 @@ if calcular:
                     hovertemplate=f'{nome}<br>Vol: %{{x:.2f}}%<br>Ret: %{{y:.2f}}%<extra></extra>'
                 ))
             
+            # =============================================================
+            # 3) ESTRATÉGIAS LIMITADAS (SÓ SE limite_peso > 0)
+            # =============================================================
+            if limite_peso > 0:
+                estrategias_limitadas = [
+                    (vol_max_sharpe_lim * 100, ret_max_sharpe_lim * 100, 'Sharpe Limitado', 'green', 'cross'),
+                    (vol_min_vol_lim   * 100, ret_min_vol_lim   * 100, 'MinVol Limitado', 'purple',  'cross')
+                ]
+
+                for vol, ret, nome, cor, simbolo in estrategias_limitadas:
+                    fig.add_trace(go.Scatter(
+                        x=[vol],
+                        y=[ret],
+                        mode='markers',
+                        marker=dict(
+                            size=14,
+                            color=cor,
+                            symbol=simbolo,  # Usa símbolo de cruz para diferenciar
+                            line=dict(color='black', width=2)
+                        ),
+                        name=nome,
+                        hovertemplate=f'{nome}<br>Vol: %{{x:.2f}}%<br>Ret: %{{y:.2f}}%<extra></extra>'
+                    ))
+            
+            # =============================================================
+            # 4) CARTEIRA DO USUÁRIO (SE EXISTIR)
+            # =============================================================
             if pesos_user is not None:
                 fig.add_trace(go.Scatter(
                     x=[vol_user * 100],
                     y=[ret_user * 100],
                     mode='markers',
-                    marker=dict(size=15, color='white', line=dict(color='black', width=2), symbol='star'),
+                    marker=dict(
+                        size=15, 
+                        color='white', 
+                        line=dict(color='black', width=2), 
+                        symbol='star'  # Símbolo de estrela para destacar
+                    ),
                     name='Minha Carteira',
                     hovertemplate='Minha Carteira<br>Vol: %{x:.2f}%<br>Ret: %{y:.2f}%<extra></extra>'
                 ))
             
+            # =============================================================
+            # 5) CONFIGURAÇÕES DO GRÁFICO
+            # =============================================================
             fig.update_layout(
                 xaxis_title="Volatilidade Mensal (%)",
                 yaxis_title="Retorno Mensal (%)",
-                hovermode='closest',
+                hovermode='closest',  # Mostra tooltip do ponto mais próximo
                 height=600,
                 showlegend=True,
-                legend=dict(x=0.01, y=0.99),
+                legend=dict(x=0.01, y=0.99),  # Legenda no canto superior esquerdo
                 template="plotly_white"
             )
             
@@ -457,45 +473,70 @@ if calcular:
             st.subheader("Comparação de Estratégias")
             
             # =============================================================
+            # CALCULAR RETORNOS ACUMULADOS PARA TODAS AS ESTRATÉGIAS
+            # =============================================================
+            def calcular_retorno_acumulado(pesos):
+                """Calcula o retorno acumulado no período para uma carteira"""
+                retornos_carteira = retornos.dot(pesos)
+                retorno_acumulado = (1 + retornos_carteira).prod() - 1
+                return retorno_acumulado
+            
+            # Calcular retornos acumulados para cada estratégia
+            ret_acum_max_sharpe = calcular_retorno_acumulado(pesos_max_sharpe)
+            ret_acum_min_vol = calcular_retorno_acumulado(pesos_min_vol)
+            ret_acum_target = calcular_retorno_acumulado(w_target)
+            ret_acum_max_sharpe_lim = calcular_retorno_acumulado(pesos_max_sharpe_lim)
+            ret_acum_min_vol_lim = calcular_retorno_acumulado(pesos_min_vol_lim)
+            
+            if pesos_user is not None:
+                ret_acum_user = calcular_retorno_acumulado(pesos_user)
+            
+            # =============================================================
             # 1) TABELA RESUMO DAS ESTRATÉGIAS
             # =============================================================
             estrategias_data = {
                 'Estratégia': [
                     'Máximo Sharpe',
                     'Mínima Volatilidade',
-                    'Target',
-                    'Sharpe Limitado',
-                    'Vol Min Limitada'
+                    'Target'
                 ],
                 'Retorno Mensal (%)': [
                     ret_max_sharpe * 100,
                     ret_min_vol * 100,
-                    ret_target * 100,
-                    ret_max_sharpe_lim * 100,
-                    ret_min_vol_lim * 100
+                    ret_target * 100
                 ],
                 'Volatilidade (%)': [
                     vol_max_sharpe * 100,
                     vol_min_vol * 100,
-                    vol_target * 100,
-                    vol_max_sharpe_lim * 100,
-                    vol_min_vol_lim * 100
+                    vol_target * 100
                 ],
                 'Sharpe Ratio': [
                     sharpe_max_sharpe,
                     sharpe_min_vol,
-                    sharpe_target,
-                    sharpe_max_sharpe_lim,
-                    sharpe_min_vol_lim
+                    sharpe_target
+                ],
+                'Retorno Acumulado (%)': [
+                    ret_acum_max_sharpe * 100,
+                    ret_acum_min_vol * 100,
+                    ret_acum_target * 100
                 ]
             }
-            
+
+            # Adiciona carteiras limitadas apenas se existirem
+            if limite_peso > 0:
+                estrategias_data['Estratégia'].extend(['Sharpe Limitado', 'Vol Min Limitada'])
+                estrategias_data['Retorno Mensal (%)'].extend([ret_max_sharpe_lim * 100, ret_min_vol_lim * 100])
+                estrategias_data['Volatilidade (%)'].extend([vol_max_sharpe_lim * 100, vol_min_vol_lim * 100])
+                estrategias_data['Sharpe Ratio'].extend([sharpe_max_sharpe_lim, sharpe_min_vol_lim])
+                estrategias_data['Retorno Acumulado (%)'].extend([ret_acum_max_sharpe_lim * 100, ret_acum_min_vol_lim * 100])
+
             # Adiciona carteira do usuário
             if pesos_user is not None:
                 estrategias_data['Estratégia'].append('🌟 Minha Carteira')
                 estrategias_data['Retorno Mensal (%)'].append(ret_user * 100)
                 estrategias_data['Volatilidade (%)'].append(vol_user * 100)
                 estrategias_data['Sharpe Ratio'].append(sharpe_user)
+                estrategias_data['Retorno Acumulado (%)'].append(ret_acum_user * 100)
             
             df_estrategias = pd.DataFrame(estrategias_data)
             df_estrategias = df_estrategias.sort_values('Sharpe Ratio', ascending=False)
@@ -504,7 +545,8 @@ if calcular:
                 df_estrategias.style.format({
                     'Retorno Mensal (%)': '{:.4f}',
                     'Volatilidade (%)': '{:.4f}',
-                    'Sharpe Ratio': '{:.4f}'
+                    'Sharpe Ratio': '{:.4f}',
+                    'Retorno Acumulado (%)': '{:.4f}'
                 }).background_gradient(subset=['Sharpe Ratio'], cmap='RdYlGn'),
                 use_container_width=True,
                 hide_index=True
@@ -531,6 +573,7 @@ if calcular:
                 st.metric("Retorno Mensal", f"{ret_max_sharpe * 100:.4f}%")
                 st.metric("Volatilidade", f"{vol_max_sharpe * 100:.4f}%")
                 st.metric("Sharpe", f"{sharpe_max_sharpe:.4f}")
+                st.metric("Retorno Acumulado", f"{ret_acum_max_sharpe * 100:.4f}%")
             
             # -------------------------------------------------------------
             # 🛡️ Mínima Volatilidade
@@ -546,6 +589,7 @@ if calcular:
                 st.metric("Retorno Mensal", f"{ret_min_vol * 100:.4f}%")
                 st.metric("Volatilidade", f"{vol_min_vol * 100:.4f}%")
                 st.metric("Sharpe", f"{sharpe_min_vol:.4f}")
+                st.metric("Retorno Acumulado", f"{ret_acum_min_vol * 100:.4f}%")
             
             
             # =============================================================
@@ -567,41 +611,45 @@ if calcular:
                 st.metric("Retorno Mensal", f"{ret_target * 100:.4f}%")
                 st.metric("Volatilidade", f"{vol_target * 100:.4f}%")
                 st.metric("Sharpe", f"{sharpe_target:.4f}")
+                st.metric("Retorno Acumulado", f"{ret_acum_target * 100:.4f}%")
             
             
             # =============================================================
-            # 4) CARTEIRAS LIMITADAS
+            # 4) CARTEIRAS LIMITADAS (SÓ SE limite_peso > 0)
             # =============================================================
-            st.markdown("---")
-            st.markdown("## 🔒 Otimizações com Limite de Peso")
-            
-            col_lim1, col_lim2 = st.columns(2)
-            
-            # ---- SHARPE LIMITADO
-            with col_lim1:
-                st.markdown("### 🔒 Máximo Sharpe (Limitado)")
-                df_lim_sharpe = pd.DataFrame({
-                    'Ativo': [a.replace('.SA', '') for a in ativos_validos],
-                    'Peso (%)': pesos_max_sharpe_lim * 100
-                })
-                df_lim_sharpe = df_lim_sharpe[df_lim_sharpe['Peso (%)'] > 0.01].sort_values('Peso (%)', ascending=False)
-                st.dataframe(df_lim_sharpe.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
-                st.metric("Retorno Mensal", f"{ret_max_sharpe_lim * 100:.4f}%")
-                st.metric("Volatilidade", f"{vol_max_sharpe_lim * 100:.4f}%")
-                st.metric("Sharpe", f"{sharpe_max_sharpe_lim:.4f}")
-            
-            # ---- MIN VOL LIMITADA
-            with col_lim2:
-                st.markdown("### 🔒 Mínima Volatilidade (Limitada)")
-                df_lim_minvol = pd.DataFrame({
-                    'Ativo': [a.replace('.SA', '') for a in ativos_validos],
-                    'Peso (%)': pesos_min_vol_lim * 100
-                })
-                df_lim_minvol = df_lim_minvol[df_lim_minvol['Peso (%)'] > 0.01].sort_values('Peso (%)', ascending=False)
-                st.dataframe(df_lim_minvol.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
-                st.metric("Retorno Mensal", f"{ret_min_vol_lim * 100:.4f}%")
-                st.metric("Volatilidade", f"{vol_min_vol_lim * 100:.4f}%")
-                st.metric("Sharpe", f"{sharpe_min_vol_lim:.4f}")
+            if limite_peso > 0:
+                st.markdown("---")
+                st.markdown("## 🔒 Otimizações com Limite de Peso")
+                
+                col_lim1, col_lim2 = st.columns(2)
+                
+                # ---- SHARPE LIMITADO
+                with col_lim1:
+                    st.markdown("### 🔒 Máximo Sharpe (Limitado)")
+                    df_lim_sharpe = pd.DataFrame({
+                        'Ativo': [a.replace('.SA', '') for a in ativos_validos],
+                        'Peso (%)': pesos_max_sharpe_lim * 100
+                    })
+                    df_lim_sharpe = df_lim_sharpe[df_lim_sharpe['Peso (%)'] > 0.01].sort_values('Peso (%)', ascending=False)
+                    st.dataframe(df_lim_sharpe.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
+                    st.metric("Retorno Mensal", f"{ret_max_sharpe_lim * 100:.4f}%")
+                    st.metric("Volatilidade", f"{vol_max_sharpe_lim * 100:.4f}%")
+                    st.metric("Sharpe", f"{sharpe_max_sharpe_lim:.4f}")
+                    st.metric("Retorno Acumulado", f"{ret_acum_max_sharpe_lim * 100:.4f}%")
+                
+                # ---- MIN VOL LIMITADA
+                with col_lim2:
+                    st.markdown("### 🔒 Mínima Volatilidade (Limitada)")
+                    df_lim_minvol = pd.DataFrame({
+                        'Ativo': [a.replace('.SA', '') for a in ativos_validos],
+                        'Peso (%)': pesos_min_vol_lim * 100
+                    })
+                    df_lim_minvol = df_lim_minvol[df_lim_minvol['Peso (%)'] > 0.01].sort_values('Peso (%)', ascending=False)
+                    st.dataframe(df_lim_minvol.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
+                    st.metric("Retorno Mensal", f"{ret_min_vol_lim * 100:.4f}%")
+                    st.metric("Volatilidade", f"{vol_min_vol_lim * 100:.4f}%")
+                    st.metric("Sharpe", f"{sharpe_min_vol_lim:.4f}")
+                    st.metric("Retorno Acumulado", f"{ret_acum_min_vol_lim * 100:.4f}%")
             
             
             # =============================================================
@@ -625,7 +673,7 @@ if calcular:
                     st.metric("Retorno Mensal", f"{ret_user * 100:.4f}%")
                     st.metric("Volatilidade", f"{vol_user * 100:.4f}%")
                     st.metric("Sharpe", f"{sharpe_user:.4f}")
-                    st.metric("Correlação Média", f"{corr_user:.6f}")
+                    st.metric("Retorno Acumulado", f"{ret_acum_user * 100:.4f}%")
 
         
         with tab3:
@@ -689,6 +737,51 @@ if calcular:
                 st.metric("Tipo de Retorno", "Logarítmico" if usar_log else "Simples")
             with col6:
                 st.metric("Retorno Alvo", f"{target_return * 100:.2f}%")
+            
+            # =============================================================
+            # NOVA SEÇÃO: CONFIGURAÇÕES DE LIMITE DE PESO
+            # =============================================================
+            st.markdown("---")
+            st.subheader("Configurações de Limite de Peso")
+            
+            col_lim1, col_lim2 = st.columns(2)
+            
+            with col_lim1:
+                # Mostra o limite que o usuário escolheu
+                limite_escolhido = st.slider.__defaults__[0] if 'limite_peso' not in locals() else limite_peso * 100
+                st.metric("Limite Escolhido pelo Usuário", f"{limite_escolhido:.1f}%")
+            
+            with col_lim2:
+                if limite_peso > 0:
+                    # Calcula o limite efetivamente aplicado (pode ser diferente do escolhido devido ao mínimo necessário)
+                    limite_efetivo = limite_peso * 100
+                    limite_minimo_necessario = (1 / len(ativos_validos)) * 100
+                    
+                    if limite_efetivo < limite_minimo_necessario:
+                        st.metric("Limite Efetivamente Aplicado", f"{limite_minimo_necessario:.1f}%")
+                        st.caption(f"*Ajustado do limite escolhido ({limite_efetivo:.1f}%) para o mínimo necessário*")
+                    else:
+                        st.metric("Limite Efetivamente Aplicado", f"{limite_efetivo:.1f}%")
+                        st.caption("*Limite aplicado conforme escolhido pelo usuário*")
+                else:
+                    st.metric("Limite Efetivamente Aplicado", "Desativado")
+                    st.caption("*Carteiras limitadas não foram calculadas*")
+            
+            # Informação adicional sobre o limite
+            if limite_peso > 0:
+                st.info(f"""
+                **📊 Informações sobre o limite de peso:**
+                - **Número de ativos:** {len(ativos_validos)}
+                - **Limite mínimo necessário:** {(1/len(ativos_validos))*100:.1f}%
+                - **Status:** Carteiras limitadas **ativas**
+                - **Estratégias calculadas:** Máximo Sharpe Limitado e Mínima Volatilidade Limitada
+                """)
+            else:
+                st.info("""
+                **📊 Informações sobre o limite de peso:**
+                - **Status:** Carteiras limitadas **desativadas**
+                - **Estratégias calculadas:** Apenas as estratégias principais (sem limite)
+                """)
             
             st.markdown("---")
             st.subheader("Ativos Analisados")
