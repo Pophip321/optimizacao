@@ -614,7 +614,7 @@ if calcular:
                 estrategias_data['Retorno Mensal (%)'].extend([ret_max_sharpe_lim * 100, ret_min_vol_lim * 100])
                 estrategias_data['Volatilidade (%)'].extend([vol_max_sharpe_lim * 100, vol_min_vol_lim * 100])
                 estrategias_data['Sharpe Ratio'].extend([sharpe_max_sharpe_lim, sharpe_min_vol_lim])  
-                estrategias_data['Retorno Acumulado Real'].extend([ret_acum_real_max_sharpe_lim * 100, ret_acum_real_min_vol_lim *100])
+                estrategias_data['Retorno Acumulado Real (%)'].extend([ret_acum_real_max_sharpe_lim * 100, ret_acum_real_min_vol_lim *100])
 
             # Adiciona carteira do usuário
             if pesos_user is not None:
