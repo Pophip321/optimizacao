@@ -542,29 +542,53 @@ if calcular:
             # =============================================================
             # CALCULAR RETORNOS ACUMULADOS PARA TODAS AS ESTRATÉGIAS
             # =============================================================
-            def calcular_retorno_acumulado(pesos):
-                """Calcula o retorno acumulado no período para uma carteira"""
+            def calcular_retornos_acumulados(pesos):
+                """Calcula ambos retornos: acumulado real e esperado"""
                 if pesos is None:
-                    return None
+                    return None, None
                 retornos_carteira = retornos.dot(pesos)
-                retorno_acumulado = (1 + retornos_carteira).prod() - 1
-                return retorno_acumulado
+                
+                # Retorno acumulado REAL (o que realmente aconteceu)
+                retorno_acumulado_real = (1 + retornos_carteira).prod() - 1
+                
+                # Retorno acumulado ESPERADO (projeção com média - juros compostos)
+                retorno_medio_mensal = retornos_carteira.mean()
+                n_meses = len(retornos_carteira)
+                retorno_acumulado_esperado = (1 + retorno_medio_mensal) ** n_meses - 1
+                
+                return retorno_acumulado_real, retorno_acumulado_esperado
 
             # Calcular retornos acumulados para cada estratégia
-            ret_acum_max_sharpe = calcular_retorno_acumulado(pesos_max_sharpe)
-            ret_acum_min_vol = calcular_retorno_acumulado(pesos_min_vol)
-            ret_acum_target = calcular_retorno_acumulado(w_target)
+            ret_acum_real_max_sharpe, ret_acum_esperado_max_sharpe = calcular_retornos_acumulados(pesos_max_sharpe)
+            ret_acum_real_min_vol, ret_acum_esperado_min_vol = calcular_retornos_acumulados(pesos_min_vol)
+            ret_acum_real_target, ret_acum_esperado_target = calcular_retornos_acumulados(w_target)
 
             # Só calcular para carteiras limitadas se existirem
             if limite_peso > 0:
-                ret_acum_max_sharpe_lim = calcular_retorno_acumulado(pesos_max_sharpe_lim)
-                ret_acum_min_vol_lim = calcular_retorno_acumulado(pesos_min_vol_lim)
+                ret_acum_real_max_sharpe_lim, ret_acum_esperado_max_sharpe_lim = calcular_retornos_acumulados(pesos_max_sharpe_lim)
+                ret_acum_real_min_vol_lim, ret_acum_esperado_min_vol_lim = calcular_retornos_acumulados(pesos_min_vol_lim)
+            else:
+                ret_acum_real_max_sharpe_lim = ret_acum_esperado_max_sharpe_lim = None
+                ret_acum_real_min_vol_lim = ret_acum_esperado_min_vol_lim = None
+
+            if pesos_user is not None:
+                ret_acum_real_user, ret_acum_esperado_user = calcular_retornos_acumulados(pesos_user)
+
+            # Calcular retornos acumulados para cada estratégia
+            ret_acum_max_sharpe = calcular_retornos_acumulados(pesos_max_sharpe)
+            ret_acum_min_vol = calcular_retornos_acumulados(pesos_min_vol)
+            ret_acum_target = calcular_retornos_acumulados(w_target)
+
+            # Só calcular para carteiras limitadas se existirem
+            if limite_peso > 0:
+                ret_acum_max_sharpe_lim = calcular_retornos_acumulados(pesos_max_sharpe_lim)
+                ret_acum_min_vol_lim = calcular_retornos_acumulados(pesos_min_vol_lim)
             else:
                 ret_acum_max_sharpe_lim = None
                 ret_acum_min_vol_lim = None
 
             if pesos_user is not None:
-                ret_acum_user = calcular_retorno_acumulado(pesos_user)
+                ret_acum_user = calcular_retornos_acumulados(pesos_user)
             
             # =============================================================
             # 1) TABELA RESUMO DAS ESTRATÉGIAS
@@ -580,6 +604,11 @@ if calcular:
                     ret_min_vol * 100,
                     ret_target * 100
                 ],
+                'Retorno Acumulado Real (%)': [
+                    ret_acum_real_max_sharpe * 100,
+                    ret_acum_real_min_vol * 100,
+                    ret_acum_real_target * 100
+                ],
                 'Volatilidade (%)': [
                     vol_max_sharpe * 100,
                     vol_min_vol * 100,
@@ -589,29 +618,26 @@ if calcular:
                     sharpe_max_sharpe,
                     sharpe_min_vol,
                     sharpe_target
-                ],
-                'Retorno Acumulado (%)': [
-                    ret_acum_max_sharpe * 100,
-                    ret_acum_min_vol * 100,
-                    ret_acum_target * 100
                 ]
             }
 
             # Adiciona carteiras limitadas apenas se existirem
-            if limite_peso > 0 and ret_acum_max_sharpe_lim is not None and ret_acum_min_vol_lim is not None:
+            if limite_peso > 0 and ret_acum_real_max_sharpe_lim is not None and ret_acum_real_min_vol_lim is not None:
                 estrategias_data['Estratégia'].extend(['Sharpe Limitado', 'Vol Min Limitada'])
                 estrategias_data['Retorno Mensal (%)'].extend([ret_max_sharpe_lim * 100, ret_min_vol_lim * 100])
+                estrategias_data['Retorno Acumulado Real (%)'].extend([ret_acum_real_max_sharpe_lim * 100, ret_acum_real_min_vol_lim * 100])
                 estrategias_data['Volatilidade (%)'].extend([vol_max_sharpe_lim * 100, vol_min_vol_lim * 100])
                 estrategias_data['Sharpe Ratio'].extend([sharpe_max_sharpe_lim, sharpe_min_vol_lim])
-                estrategias_data['Retorno Acumulado (%)'].extend([ret_acum_max_sharpe_lim * 100, ret_acum_min_vol_lim * 100])
+
 
             # Adiciona carteira do usuário
             if pesos_user is not None:
                 estrategias_data['Estratégia'].append('🌟 Minha Carteira')
                 estrategias_data['Retorno Mensal (%)'].append(ret_user * 100)
+                estrategias_data['Retorno Acumulado Real (%)'].append(ret_acum_real_user * 100)
                 estrategias_data['Volatilidade (%)'].append(vol_user * 100)
                 estrategias_data['Sharpe Ratio'].append(sharpe_user)
-                estrategias_data['Retorno Acumulado (%)'].append(ret_acum_user * 100)
+                
                         
             df_estrategias = pd.DataFrame(estrategias_data)
             df_estrategias = df_estrategias.sort_values('Sharpe Ratio', ascending=False)
@@ -621,7 +647,7 @@ if calcular:
                     'Retorno Mensal (%)': '{:.4f}',
                     'Volatilidade (%)': '{:.4f}',
                     'Sharpe Ratio': '{:.4f}',
-                    'Retorno Acumulado (%)': '{:.4f}'
+                    'Retorno Acumulado Real (%)': '{:.4f}'
                 }).background_gradient(subset=['Sharpe Ratio'], cmap='RdYlGn'),
                 use_container_width=True,
                 hide_index=True
@@ -645,10 +671,16 @@ if calcular:
                 })
                 df_max_sharpe = df_max_sharpe[df_max_sharpe['Peso (%)'] > 0.01].sort_values('Peso (%)', ascending=False)
                 st.dataframe(df_max_sharpe.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
+                
+                # MÉTRICAS ORIGINAIS
                 st.metric("Retorno Mensal", f"{ret_max_sharpe * 100:.4f}%")
                 st.metric("Volatilidade", f"{vol_max_sharpe * 100:.4f}%")
                 st.metric("Sharpe", f"{sharpe_max_sharpe:.4f}")
-                st.metric("Retorno Acumulado", f"{ret_acum_max_sharpe * 100:.4f}%")
+                
+                # NOVAS MÉTRICAS - AMBOS RETORNOS ACUMULADOS
+                st.metric("Retorno Acumulado Real", f"{ret_acum_real_max_sharpe * 100:.4f}%")
+                st.metric("Retorno Acumulado Esperado", f"{ret_acum_esperado_max_sharpe * 100:.4f}%")
+                st.caption("📊 Real: retorno efetivo | Esperado: se a média se repetir")
             
             # -------------------------------------------------------------
             # 🛡️ Mínima Volatilidade
@@ -661,10 +693,16 @@ if calcular:
                 })
                 df_min_vol = df_min_vol[df_min_vol['Peso (%)'] > 0.01].sort_values('Peso (%)', ascending=False)
                 st.dataframe(df_min_vol.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
+                
+                # MÉTRICAS ORIGINAIS
                 st.metric("Retorno Mensal", f"{ret_min_vol * 100:.4f}%")
                 st.metric("Volatilidade", f"{vol_min_vol * 100:.4f}%")
                 st.metric("Sharpe", f"{sharpe_min_vol:.4f}")
-                st.metric("Retorno Acumulado", f"{ret_acum_min_vol * 100:.4f}%")
+                
+                # NOVAS MÉTRICAS - AMBOS RETORNOS ACUMULADOS
+                st.metric("Retorno Acumulado Real", f"{ret_acum_real_min_vol * 100:.4f}%")
+                st.metric("Retorno Acumulado Esperado", f"{ret_acum_esperado_min_vol * 100:.4f}%")
+                st.caption("📊 Real: retorno efetivo | Esperado: se a média se repetir")
             
             
             # =============================================================
@@ -673,7 +711,7 @@ if calcular:
             st.markdown("---")
             st.markdown("### 🎯 Target")
             col3_1, col3_2 = st.columns([2, 1])
-            
+
             with col3_1:
                 df_target = pd.DataFrame({
                     'Ativo': [a.replace('.SA', '') for a in ativos_validos],
@@ -681,12 +719,17 @@ if calcular:
                 })
                 df_target = df_target[df_target['Peso (%)'] > 0.01].sort_values('Peso (%)', ascending=False)
                 st.dataframe(df_target.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
-            
+
             with col3_2:
+                # MÉTRICAS ORIGINAIS
                 st.metric("Retorno Mensal", f"{ret_target * 100:.4f}%")
                 st.metric("Volatilidade", f"{vol_target * 100:.4f}%")
                 st.metric("Sharpe", f"{sharpe_target:.4f}")
-                st.metric("Retorno Acumulado", f"{ret_acum_target * 100:.4f}%")
+                
+                # NOVAS MÉTRICAS - AMBOS RETORNOS ACUMULADOS
+                st.metric("Retorno Acumulado Real", f"{ret_acum_real_target * 100:.4f}%")
+                st.metric("Retorno Acumulado Esperado", f"{ret_acum_esperado_target * 100:.4f}%")
+                st.caption("📊 Real: retorno efetivo | Esperado: se a média se repetir")
             
             
             # =============================================================
@@ -707,10 +750,16 @@ if calcular:
                     })
                     df_lim_sharpe = df_lim_sharpe[df_lim_sharpe['Peso (%)'] > 0.01].sort_values('Peso (%)', ascending=False)
                     st.dataframe(df_lim_sharpe.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
+                    
+                    # MÉTRICAS ORIGINAIS
                     st.metric("Retorno Mensal", f"{ret_max_sharpe_lim * 100:.4f}%")
                     st.metric("Volatilidade", f"{vol_max_sharpe_lim * 100:.4f}%")
                     st.metric("Sharpe", f"{sharpe_max_sharpe_lim:.4f}")
-                    st.metric("Retorno Acumulado", f"{ret_acum_max_sharpe_lim * 100:.4f}%")
+                    
+                    # NOVAS MÉTRICAS - AMBOS RETORNOS ACUMULADOS
+                    st.metric("Retorno Acumulado Real", f"{ret_acum_real_max_sharpe_lim * 100:.4f}%")
+                    st.metric("Retorno Acumulado Esperado", f"{ret_acum_esperado_max_sharpe_lim * 100:.4f}%")
+                    st.caption("📊 Real: retorno efetivo | Esperado: se a média se repetir")
                 
                 # ---- MIN VOL LIMITADA
                 with col_lim2:
@@ -721,10 +770,16 @@ if calcular:
                     })
                     df_lim_minvol = df_lim_minvol[df_lim_minvol['Peso (%)'] > 0.01].sort_values('Peso (%)', ascending=False)
                     st.dataframe(df_lim_minvol.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
+                    
+                    # MÉTRICAS ORIGINAIS
                     st.metric("Retorno Mensal", f"{ret_min_vol_lim * 100:.4f}%")
                     st.metric("Volatilidade", f"{vol_min_vol_lim * 100:.4f}%")
                     st.metric("Sharpe", f"{sharpe_min_vol_lim:.4f}")
-                    st.metric("Retorno Acumulado", f"{ret_acum_min_vol_lim * 100:.4f}%")
+                    
+                    # NOVAS MÉTRICAS - AMBOS RETORNOS ACUMULADOS
+                    st.metric("Retorno Acumulado Real", f"{ret_acum_real_min_vol_lim * 100:.4f}%")
+                    st.metric("Retorno Acumulado Esperado", f"{ret_acum_esperado_min_vol_lim * 100:.4f}%")
+                    st.caption("📊 Real: retorno efetivo | Esperado: se a média se repetir")
             
             
             # =============================================================
@@ -745,10 +800,15 @@ if calcular:
                     st.dataframe(df_user.style.format({'Peso (%)': '{:.2f}'}), use_container_width=True, hide_index=True)
                 
                 with col_user2:
+                    # MÉTRICAS ORIGINAIS
                     st.metric("Retorno Mensal", f"{ret_user * 100:.4f}%")
                     st.metric("Volatilidade", f"{vol_user * 100:.4f}%")
                     st.metric("Sharpe", f"{sharpe_user:.4f}")
-                    st.metric("Retorno Acumulado", f"{ret_acum_user * 100:.4f}%")
+                    
+                    # NOVAS MÉTRICAS - AMBOS RETORNOS ACUMULADOS
+                    st.metric("Retorno Acumulado Real", f"{ret_acum_real_user * 100:.4f}%")
+                    st.metric("Retorno Acumulado Esperado", f"{ret_acum_esperado_user * 100:.4f}%")
+                    st.caption("📊 Real: retorno efetivo | Esperado: se a média se repetir")
 
         
         with tab3:
@@ -799,7 +859,7 @@ if calcular:
             
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Período de Análise", f"{data_inicio} a {data_fim}, com {len(retornos)} meses")
+                st.metric("Período de Análise", f"{data_inicio} a {data_fim}, com {len(retornos)} meses, efetivos: {numero_meses_efetivo} meses")
             with col2:
                 st.metric("Número de Ativos", len(ativos_validos))
             
@@ -892,6 +952,25 @@ else:
     5. Cálculo da Fronteira Eficiente de Markowitz
     6. Análise comparativa de todas as estratégias
     
+    #### 📊 Entenda os Retornos Acumulados:
+
+    Na aba **Estratégias**, você verá **DOIS** tipos de retorno acumulado:
+
+    **🎯 Retorno Acumulado REAL**
+    - **O que é**: Retorno que realmente aconteceu no período histórico
+    - **Cálculo**: Multiplica os fatores de crescimento mês a mês `(1+R1) × (1+R2) × ...`
+    - **Significado**: "Se eu tivesse investido nessa estratégia, quanto teria hoje?"
+
+    **📈 Retorno Acumulado ESPERADO**  
+    - **O que é**: Projeção baseada no retorno médio mensal
+    - **Cálculo**: Aplica juros compostos com a média `(1 + Retorno_Médio) ^ Meses`
+    - **Significado**: "Se esse retorno médio se repetir, quanto terei no futuro?"
+
+    **💡 Por que mostrar ambos?**
+    - O **Real** mostra o desempenho histórico verdadeiro
+    - O **Esperado** ajuda a projetar resultados futuros
+    - A diferença entre eles revela o impacto da **volatilidade** - retornos variáveis reduzem o ganho real!                
+
     #### Como Usar:
     
     1. Configure o período de análise (datas inicial e final, **ANO/MÊS/DIA**)
