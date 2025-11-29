@@ -574,19 +574,6 @@ if calcular:
             if pesos_user is not None:
                 ret_acum_real_user, ret_acum_esperado_user = calcular_retornos_acumulados(pesos_user)
 
-            # Calcular retornos acumulados para cada estratégia
-            ret_acum_max_sharpe = calcular_retornos_acumulados(pesos_max_sharpe)
-            ret_acum_min_vol = calcular_retornos_acumulados(pesos_min_vol)
-            ret_acum_target = calcular_retornos_acumulados(w_target)
-
-            # Só calcular para carteiras limitadas se existirem
-            if limite_peso > 0:
-                ret_acum_max_sharpe_lim = calcular_retornos_acumulados(pesos_max_sharpe_lim)
-                ret_acum_min_vol_lim = calcular_retornos_acumulados(pesos_min_vol_lim)
-            else:
-                ret_acum_max_sharpe_lim = None
-                ret_acum_min_vol_lim = None
-
             if pesos_user is not None:
                 ret_acum_user = calcular_retornos_acumulados(pesos_user)
             
@@ -639,7 +626,7 @@ if calcular:
                 
                         
             df_estrategias = pd.DataFrame(estrategias_data)
-            df_estrategias = df_estrategias.sort_values('Sharpe Ratio', ascending=False)
+            df_estrategias = df_estrategias.sort_values('Sharpe Ratio (%)', ascending=False)
             
             st.dataframe(
                 df_estrategias.style.format({
