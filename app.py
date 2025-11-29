@@ -34,7 +34,7 @@ with st.sidebar:
     st.markdown("Digite os tickers sem .SA (ex: PETR4, VALE3)")
     
     ativos_input = st.text_area(
-        "Um ticker por linha",
+        "Um ticker por linha, como já esta o exemplo:",
         value="PETR4\nVALE3\nITUB4\nBBDC4\nABEV3",
         height=150
     )
@@ -90,16 +90,84 @@ with st.sidebar:
 if calcular:
     try:
         with st.spinner("Processando dados..."):
-            inicio = dt.datetime.combine(data_inicio, dt.datetime.min.time())
-            fim = dt.datetime.combine(data_fim, dt.datetime.min.time())
+            # =============================================================
+            # CORREÇÃO: BUSCAR ÚLTIMAS COTAÇÕES DISPONÍVEIS
+            # =============================================================
             
+            def get_ultima_data_disponivel(ticker, data_limite):
+                """Busca a última data disponível para um ticker até a data limite"""
+                try:
+                    t = yf.Ticker(ticker)
+                    # Busca dados de 30 dias antes até 5 dias depois da data limite
+                    start_date = data_limite - dt.timedelta(days=30)
+                    end_date = data_limite + dt.timedelta(days=5)
+                    hist = t.history(start=start_date, end=end_date)
+                    if not hist.empty:
+                        # Filtra datas até a data limite
+                        datas_disponiveis = hist[hist.index.date <= data_limite]
+                        if not datas_disponiveis.empty:
+                            return datas_disponiveis.index[-1].date()
+                        # Se não há dados até a data limite, pega a data mais recente disponível
+                        return hist.index[-1].date()
+                    return data_limite
+                except:
+                    return data_limite
+            
+            def ajustar_datas_limites(data_inicio, data_fim, ativos):
+                """Ajusta as datas inicial e final para as últimas cotações disponíveis"""
+                data_inicio_ajustada = data_inicio
+                data_fim_ajustada = data_fim
+                
+                if ativos:
+                    # Testa com o primeiro ativo para ajustar as datas
+                    ticker_teste = ativos[0]
+                    
+                    # Ajusta data final - busca última cotação disponível
+                    data_fim_disponivel = get_ultima_data_disponivel(ticker_teste, data_fim)
+                    data_fim_ajustada = data_fim_disponivel
+                    
+                    # Ajusta data inicial - busca primeira cotação disponível
+                    try:
+                        t = yf.Ticker(ticker_teste)
+                        # Busca de 1 ano antes até 30 dias depois da data inicial
+                        hist_inicio = t.history(start=data_inicio - dt.timedelta(days=365),
+                                              end=data_inicio + dt.timedelta(days=30))
+                        if not hist_inicio.empty:
+                            # Filtra datas a partir da data inicial
+                            datas_apos_inicio = hist_inicio[hist_inicio.index.date >= data_inicio]
+                            if not datas_apos_inicio.empty:
+                                data_inicio_ajustada = datas_apos_inicio.index[0].date()
+                            else:
+                                # Se não há dados após a data inicial, pega a última disponível
+                                data_inicio_ajustada = hist_inicio.index[-1].date()
+                    except:
+                        pass
+                
+                return data_inicio_ajustada, data_fim_ajustada
+            
+            # Aplica o ajuste automático das datas
             ativos_digitados = [linha.strip().upper() for linha in ativos_input.split('\n') if linha.strip()]
             ativos_digitados = list(dict.fromkeys(ativos_digitados))
             
-            if not ativos_digitados:
-                st.error("Por favor, insira pelo menos um ativo.")
-                st.stop()
+            if ativos_digitados:
+                # Prepara lista de tickers para teste
+                tickers_teste = [t + ".SA" for t in ativos_digitados[:1]]  # Usa primeiro ativo para teste
+                data_inicio_ajustada, data_fim_ajustada = ajustar_datas_limites(data_inicio, data_fim, tickers_teste)
+                
+                # Mostra ajuste se necessário
+                if data_inicio_ajustada != data_inicio or data_fim_ajustada != data_fim:
+                    st.info(f"🔍 **Ajuste automático de datas:**\n"
+                           f"- Data inicial: {data_inicio} → {data_inicio_ajustada}\n"
+                           f"- Data final: {data_fim} → {data_fim_ajustada}")
+                
+                data_inicio = data_inicio_ajustada
+                data_fim = data_fim_ajustada
             
+            # Continua com as datas ajustadas
+            inicio = dt.datetime.combine(data_inicio, dt.datetime.min.time())
+            fim = dt.datetime.combine(data_fim, dt.datetime.min.time())
+            
+            # Resto do código de validação de ativos...
             st.info(f"Validando {len(ativos_digitados)} ativos no Yahoo Finance...")
             
             ativos_ok = []
@@ -110,7 +178,10 @@ if calcular:
                 yf_ticker = ticker + ".SA"
                 t = yf.Ticker(yf_ticker)
                 try:
-                    info = t.history(period="1d")
+                    # Testa se o ativo tem dados no período ajustado
+                    info = t.history(start=inicio - dt.timedelta(days=7), 
+                                   end=fim + dt.timedelta(days=1),
+                                   period="1d")
                     if info is None or info.empty:
                         ativos_errados.append(ticker)
                     else:
@@ -132,6 +203,7 @@ if calcular:
             st.success(f"✅ {len(lista_acoes)} ativos válidos: {', '.join([a.replace('.SA', '') for a in lista_acoes])}")
             
             with st.spinner("Baixando dados históricos..."):
+                # Agora baixa com as datas ajustadas
                 dados = yf.download(lista_acoes, start=inicio, end=fim, auto_adjust=usar_ajustada, progress=False)
                 
                 if usar_ajustada:
@@ -145,8 +217,10 @@ if calcular:
                 if isinstance(precos.columns, pd.MultiIndex):
                     precos.columns = precos.columns.get_level_values(0)
                 
+                # Pega a última cotação de cada mês
                 precos_mensais = precos.resample("ME").last()
                 
+                # Remove meses onde não há dados suficientes
                 meses_por_ativo = precos_mensais.count()
                 ativos_validos_24m = meses_por_ativo[meses_por_ativo >= 24].index
                 precos_mensais = precos_mensais[ativos_validos_24m]
@@ -154,6 +228,9 @@ if calcular:
                 if len(ativos_validos_24m) == 0:
                     st.error("Nenhum ativo possui ao menos 24 meses de histórico. Ajuste a janela temporal.")
                     st.stop()
+                
+                # SALVA O NÚMERO DE MESES PARA USAR NO TAB4
+                numero_meses_efetivo = len(precos_mensais)
                 
                 if usar_log:
                     retornos = np.log(precos_mensais / precos_mensais.shift(1))
@@ -736,73 +813,81 @@ if calcular:
             st.plotly_chart(fig_corr, use_container_width=True)
         
         with tab4:
-            st.subheader("Informações Detalhadas")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Período de Análise", f"{data_inicio} a {data_fim}")
-            with col2:
-                st.metric("Número de Ativos", len(ativos_validos))
-            
-            st.markdown("---")
-            
-            col4, col5, col6 = st.columns(3)
-            with col4:
-                st.metric("Tipo de Cotação", "Ajustada" if usar_ajustada else "Simples")
-            with col5:
-                st.metric("Tipo de Retorno", "Logarítmico" if usar_log else "Simples")
-            with col6:
-                st.metric("Retorno Alvo", f"{target_return * 100:.2f}%")
-            
-            # =============================================================
-            # NOVA SEÇÃO: CONFIGURAÇÕES DE LIMITE DE PESO
-            # =============================================================
-            st.markdown("---")
-            st.subheader("Configurações de Limite de Peso")
-
-            col_lim1, col_lim2 = st.columns(2)
-
-            with col_lim1:
-                # Mostra o limite que o usuário escolheu (convertendo de volta para porcentagem)
-                limite_escolhido_pct = limite_peso * 100
-                st.metric("Limite Escolhido pelo Usuário", f"{limite_escolhido_pct:.1f}%")
-
-            with col_lim2:
-                if limite_peso > 0:
-                    # Calcula o limite efetivamente aplicado
-                    limite_efetivo = limite_peso * 100
-                    limite_minimo_necessario = (1 / len(ativos_validos)) * 100
-                    
-                    if limite_efetivo < limite_minimo_necessario:
-                        st.metric("Limite Efetivamente Aplicado", f"{limite_minimo_necessario:.1f}%")
-                        st.caption(f"*Ajustado do limite escolhido ({limite_efetivo:.1f}%) para o mínimo necessário*")
-                    else:
-                        st.metric("Limite Efetivamente Aplicado", f"{limite_efetivo:.1f}%")
-                        st.caption("*Limite aplicado conforme escolhido pelo usuário*")
-                else:
-                    st.metric("Limite Efetivamente Aplicado", "Desativado")
-                    st.caption("*Carteiras limitadas não foram calculadas*")
-            
-            # Informação adicional sobre o limite
+        st.subheader("Informações Detalhadas")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Período de Análise", f"{data_inicio} a {data_fim}, com {len(retornos)} meses")
+        with col2:
+            st.metric("Número de Ativos", len(ativos_validos))
+        with col3:
+            st.metric("Meses Efetivos", numero_meses_efetivo)
+        
+        st.markdown("---")
+        
+        col4, col5, col6 = st.columns(3)
+        with col4:
+            st.metric("Tipo de Cotação", "Ajustada" if usar_ajustada else "Simples")
+        with col5:
+            st.metric("Tipo de Retorno", "Logarítmico" if usar_log else "Simples")
+        with col6:
+            st.metric("Retorno Alvo", f"{target_return * 100:.2f}%")
+        
+        # =============================================================
+        # CONFIGURAÇÕES DE LIMITE DE PESO
+        # =============================================================
+        st.markdown("---")
+        st.subheader("Configurações de Limite de Peso")
+        
+        col_lim1, col_lim2 = st.columns(2)
+        
+        with col_lim1:
+            # Mostra o limite que o usuário escolheu
+            limite_escolhido_pct = limite_peso * 100
+            st.metric("Limite Escolhido pelo Usuário", f"{limite_escolhido_pct:.1f}%")
+        
+        with col_lim2:
             if limite_peso > 0:
-                st.info(f"""
-                **📊 Informações sobre o limite de peso:**
-                - **Número de ativos:** {len(ativos_validos)}
-                - **Limite mínimo necessário:** {(1/len(ativos_validos))*100:.1f}%
-                - **Status:** Carteiras limitadas **ativas**
-                - **Estratégias calculadas:** Máximo Sharpe Limitado e Mínima Volatilidade Limitada
-                """)
+                # Calcula o limite efetivamente aplicado
+                limite_efetivo = limite_peso * 100
+                limite_minimo_necessario = (1 / len(ativos_validos)) * 100
+                
+                if limite_efetivo < limite_minimo_necessario:
+                    st.metric("Limite Efetivamente Aplicado", f"{limite_minimo_necessario:.1f}%")
+                    st.caption(f"*Ajustado do limite escolhido ({limite_efetivo:.1f}%) para o mínimo necessário*")
+                else:
+                    st.metric("Limite Efetivamente Aplicado", f"{limite_efetivo:.1f}%")
+                    st.caption("*Limite aplicado conforme escolhido pelo usuário*")
             else:
-                st.info("""
-                **📊 Informações sobre o limite de peso:**
-                - **Status:** Carteiras limitadas **desativadas**
-                - **Estratégias calculadas:** Apenas as estratégias principais (sem limite)
-                """)
-            
-            st.markdown("---")
-            st.subheader("Ativos Analisados")
-            ativos_display = [a.replace('.SA', '') for a in ativos_validos]
-            st.write(", ".join(ativos_display))
+                st.metric("Limite Efetivamente Aplicado", "Desativado")
+                st.caption("*Carteiras limitadas não foram calculadas*")
+        
+        # Informação adicional sobre o período
+        st.markdown("---")
+        st.subheader("Informações do Período")
+        
+        col_per1, col_per2 = st.columns(2)
+        
+        with col_per1:
+            st.metric("Primeiro Mês Disponível", precos_mensais.index[0].strftime('%b/%Y'))
+            st.metric("Último Mês Disponível", precos_mensais.index[-1].strftime('%b/%Y'))
+        
+        with col_per2:
+            st.metric("Total de Meses Completos", numero_meses_efetivo)
+            st.metric("Meses com Retornos", len(retornos))
+        
+        st.info(f"""
+        **📊 Resumo do Período:**
+        - **Período solicitado:** {data_inicio_original} a {data_fim_original}
+        - **Período efetivo:** {precos_mensais.index[0].strftime('%d/%m/%Y')} a {precos_mensais.index[-1].strftime('%d/%m/%Y')}
+        - **Meses com dados completos:** {numero_meses_efetivo}
+        - **Meses utilizados nos cálculos:** {len(retornos)}
+        """)
+        
+        st.markdown("---")
+        st.subheader("Ativos Analisados")
+        ativos_display = [a.replace('.SA', '') for a in ativos_validos]
+        st.write(", ".join(ativos_display))
     
     except Exception as e:
         st.error(f"Erro durante o processamento: {str(e)}")
