@@ -26,7 +26,7 @@ with st.sidebar:
     with col2:
         data_fim = st.date_input(
             "Data Final",
-            value=dt.date.today,
+            value=dt.date.today(),
             max_value=dt.date.today()
         )
     
