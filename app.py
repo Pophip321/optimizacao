@@ -26,7 +26,7 @@ with st.sidebar:
     with col2:
         data_fim = st.date_input(
             "Data Final",
-            value=dt.date(2025, 11, 1),
+            value=dt.date.today,
             max_value=dt.date.today()
         )
     
@@ -844,7 +844,7 @@ if calcular:
             
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Período de Análise", f"{data_inicio} a {data_fim}, com {len(retornos)} meses, efetivos: {numero_meses_efetivo} meses")
+                st.metric("Período de Análise", f"{data_inicio} a {data_fim}.")
             with col2:
                 st.metric("Número de Ativos", len(ativos_validos))
             
