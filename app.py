@@ -31,7 +31,7 @@ with st.sidebar:
         )
     
     st.subheader("2️⃣ Ativos (Tickers)")
-    st.markdown("Digite os tickers sem .SA (ex: PETR4, VALE3)")
+    st.markdown("Digite os tickers (ex: PETR4, VALE3, BOVA11)")
     
     ativos_input = st.text_area(
         "Um ticker por linha, como já esta o exemplo:",
