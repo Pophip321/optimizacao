@@ -929,27 +929,16 @@ else:
     - **Limite de Peso Máximo**: Opção para limitar o peso máximo de cada ativo no portfólio otimizado
     - **Carteira Personalizada**: Analise sua própria carteira comparando com as estratégias ótimas
     
-    #### Metodologia:
-    
-    1. Validação de ativos no Yahoo Finance (ações e ETFs brasileiros)
-    2. Download de dados históricos e reamostragem mensal
-    3. Cálculo de *retornos mensais* (simples ou logarítmicos)
-    4. Otimização matemática usando SLSQP (Sequential Least Squares Programming, equivalente a programas de otimização como solver)
-    5. Cálculo da Fronteira Eficiente de Markowitz
-    6. Análise comparativa de todas as estratégias
-    
     #### 📊 Entenda os Retornos Acumulados:
 
     Na aba **Estratégias**, você verá **DOIS** tipos de retorno acumulado:
 
     **🎯 Retorno Acumulado REAL**
     - **O que é**: Retorno que realmente aconteceu no período histórico
-    - **Cálculo**: Multiplica os fatores de crescimento mês a mês `(1+R1) × (1+R2) × ...`
     - **Significado**: "Se eu tivesse investido nessa estratégia, quanto teria hoje?"
 
     **📈 Retorno Acumulado ESPERADO**  
     - **O que é**: Projeção baseada no retorno médio mensal
-    - **Cálculo**: Aplica juros compostos com a média `(1 + Retorno_Médio) ^ Meses`
     - **Significado**: "Se esse retorno médio se repetir, quanto terei no futuro?"
 
     **💡 Por que mostrar ambos?**
