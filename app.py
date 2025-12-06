@@ -6,6 +6,78 @@ import datetime as dt
 from scipy.optimize import minimize
 import plotly.graph_objects as go
 import plotly.express as px
+import firebase_admin
+from firebase_admin import credentials, auth, firestore
+import random
+import time
+from datetime import datetime
+
+
+# ========== FIREBASE INIT ==========
+if not firebase_admin._apps:
+    cred = credentials.Certificate("firebase_key.json")
+    firebase_admin.initialize_app(cred)
+
+db = firestore.client()
+
+# ========== SESSION STATE ==========
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+if "email" not in st.session_state:
+    st.session_state.email = ""
+if "codigo" not in st.session_state:
+    st.session_state.codigo = ""
+if "permanecer" not in st.session_state:
+    st.session_state.permanecer = False
+
+
+def tela_login():
+    st.title("🔐 Acesso ao Sistema")
+
+    email = st.text_input("Digite seu e-mail")
+
+    permanecer = st.checkbox("Permanecer logado neste dispositivo")
+    
+    if st.button("Enviar código"):
+        if email:
+            codigo = str(random.randint(100000, 999999))
+            st.session_state.codigo = codigo
+            st.session_state.email = email
+            st.session_state.permanecer = permanecer
+
+            # salva no firebase
+            db.collection("logins").add({
+                "email": email,
+                "codigo": codigo,
+                "criado_em": datetime.now()
+            })
+
+            st.success("Código enviado para seu e-mail (simulação).")
+            st.info(f"Código gerado (debug): {codigo}")
+        else:
+            st.error("Digite um e-mail válido")
+
+    codigo_digitado = st.text_input("Digite o código recebido")
+
+    if st.button("Confirmar acesso"):
+        if codigo_digitado == st.session_state.codigo:
+            st.session_state.logado = True
+
+            db.collection("acessos").add({
+                "email": st.session_state.email,
+                "hora_acesso": datetime.now()
+            })
+
+            st.rerun()
+        else:
+            st.error("Código incorreto")
+
+if not st.session_state.logado:
+    tela_login()
+    st.stop()
+
+
+
 
 st.set_page_config(page_title="Otimização de Portfólio", page_icon="📊", layout="wide")
 
