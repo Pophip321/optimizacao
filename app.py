@@ -15,11 +15,9 @@ from datetime import datetime
 
 
 # ================= FIREBASE INIT =================
-firebase_secrets = st.secrets["firebase"]
-
-cred = credentials.Certificate(dict(firebase_secrets))
-
 if not firebase_admin._apps:
+    firebase_key = json.loads(st.secrets["FIREBASE_KEY"])
+    cred = credentials.Certificate(firebase_key)
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
