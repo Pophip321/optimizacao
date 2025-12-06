@@ -16,11 +16,17 @@ from datetime import datetime
 
 # ================= FIREBASE INIT =================
 if not firebase_admin._apps:
-    firebase_key = json.loads(st.secrets["FIREBASE_KEY"])
+    firebase_key = json.loads(st.secrets["FIREBASE_KEY_JSON"])
     cred = credentials.Certificate(firebase_key)
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
+
+try:
+    db.collection("teste").add({"online": True})
+    st.success("✅ Firebase conectado!")
+except Exception as e:
+    st.error(f"❌ Firebase erro: {e}")
 
 # ================= SESSION STATE =================
 if "logado" not in st.session_state:
