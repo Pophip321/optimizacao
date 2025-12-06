@@ -122,7 +122,7 @@ else:
     print("❌Cotação Simples❌")
 
 # Número de carteiras simuladas (Monte Carlo)
-numero_carteiras = 1000
+numero_carteiras = 100000
 
 # -----------------------------
 # BAIXAR DADOS (yfinance)
@@ -204,31 +204,6 @@ matriz_corr_vals = matriz_corr.values
 
 vol_individual = np.sqrt(np.diag(matriz_covariancia.values))
 
-# =====================================================
-# CONFERIR PRIMEIROS E ÚLTIMOS VALORES DOS ATIVOS
-# =====================================================
-
-print("\n===========================================")
-print("   CONFERÊNCIA DOS PREÇOS DOS ATIVOS")
-print("===========================================\n")
-
-for ativo in ativos_validos:
-    print(f"\n📌 {ativo} — 3 primeiros e 3 últimos preços:\n")
-
-    try:
-        serie = precos_mensais[ativo].dropna()
-
-        print("   ➤ Primeiros 3 preços:")
-        print(serie.head(3).to_string())
-
-        print("\n   ➤ Últimos 3 preços:")
-        print(serie.tail(3).to_string())
-
-    except Exception as e:
-        print(f"   ⚠ Erro ao acessar {ativo}: {e}")
-
-    print("\n-------------------------------------------")
-
 
 # =============================================================================
 # MÉTRICAS INDIVIDUAIS DE CADA ATIVO
@@ -244,7 +219,6 @@ for ativo in ativos_validos:
     v = np.sqrt(matriz_covariancia.loc[ativo, ativo])
     s = r / v if v != 0 else np.nan
     print(f"{ativo:<10} {r*100:>14.4f}% {v*100:>14.4f}% {s:>10.4f}")
-
 
 
 # -----------------------------
@@ -408,109 +382,6 @@ ret_cr1_ret = retorno_portfolio(pesos_cr1_ret)
 vol_cr1_ret = risco_portfolio(pesos_cr1_ret)
 corr_cr1_ret = correlacao_media(pesos_cr1_ret)
 ratio_cr1_ret = ret_cr1_ret / corr_cr1_ret if corr_cr1_ret != 0 else np.nan
-
-# =============================================================================
-# 🔒 CARTEIRAS COM LIMITE DE PESO
-# =============================================================================
-print("\n" + "="*80)
-print(" CONFIGURAÇÃO: LIMITE MÁXIMO DE PESO POR ATIVO")
-print("="*80)
-
-# -----------------------------------------------
-# Pergunta o limite ao usuário
-# -----------------------------------------------
-lim_input = input("\nDigite o limite máximo por ativo (ex: 0.25 para 25%).\nLimite: ").strip()
-
-try:
-    limite = float(lim_input.replace(",", "."))
-except:
-    print("Entrada inválida. Usando limite padrão de 25%.")
-    limite = 0.25
-
-# -----------------------------------------------
-# Ajuste automático se o limite for impossível
-# -----------------------------------------------
-limite_minimo_necessario = 1 / n  # ex: com 4 ativos, mínimo é 25%
-
-if limite < limite_minimo_necessario:
-    print(f"\n⚠️ Aviso: Com {n} ativos, não é possível limitar a {limite*100:.1f}% cada.")
-    limite = limite_minimo_necessario
-    print(f"👉 Ajustando limite máximo automaticamente para {limite*100:.2f}%\n")
-
-print(f"\n🔒 Peso máximo por ativo configurado para: {limite*100:.2f}%")
-
-# -----------------------------------------------
-# Bounds limitados para otimização
-# -----------------------------------------------
-bounds_limitados = tuple((0.0, limite) for _ in range(n))
-
-# =============================================================================
-# 1) MAX SHARPE LIMITADO
-# =============================================================================
-print("\n" + "="*80)
-print(" CARTEIRA LIMITADA – MÁXIMO SHARPE")
-print("="*80)
-
-res_maxsharpe_lim = minimize(
-    sharpe_negativo,
-    w0,
-    method="SLSQP",
-    bounds=bounds_limitados,
-    constraints={'type': 'eq', 'fun': soma_pesos},
-    options={'maxiter': 2000}
-)
-
-if not res_maxsharpe_lim.success:
-    print("⚠️ Otimização MaxSharpe limitada falhou. Usando pesos uniformes.")
-    pesos_max_sharpe_lim = w0.copy()
-else:
-    pesos_max_sharpe_lim = res_maxsharpe_lim.x
-
-ret_max_sharpe_lim = retorno_portfolio(pesos_max_sharpe_lim)
-vol_max_sharpe_lim = risco_portfolio(pesos_max_sharpe_lim)
-sharpe_max_sharpe_lim = ret_max_sharpe_lim / vol_max_sharpe_lim
-
-print("\nPesos:")
-for ativo, peso in zip(ativos_validos, pesos_max_sharpe_lim):
-    print(f"{ativo:10s}: {peso*100:6.2f}%")
-
-print(f"\nRetorno:       {ret_max_sharpe_lim*100:.4f}%")
-print(f"Volatilidade:  {vol_max_sharpe_lim*100:.4f}%")
-print(f"Sharpe:        {sharpe_max_sharpe_lim:.4f}")
-
-# =============================================================================
-# 2) MIN VARIÂNCIA LIMITADA
-# =============================================================================
-print("\n" + "="*80)
-print(" CARTEIRA LIMITADA – MÍNIMA VOLATILIDADE")
-print("="*80)
-
-res_minvar_lim = minimize(
-    risco_portfolio,
-    w0,
-    method="SLSQP",
-    bounds=bounds_limitados,
-    constraints={'type': 'eq', 'fun': soma_pesos},
-    options={'maxiter': 2000}
-)
-
-if not res_minvar_lim.success:
-    print("⚠️ Otimização MinVol limitada falhou. Usando pesos uniformes.")
-    pesos_min_vol_lim = w0.copy()
-else:
-    pesos_min_vol_lim = res_minvar_lim.x
-
-ret_min_vol_lim = retorno_portfolio(pesos_min_vol_lim)
-vol_min_vol_lim = risco_portfolio(pesos_min_vol_lim)
-sharpe_min_vol_lim = ret_min_vol_lim / vol_min_vol_lim
-
-print("\nPesos:")
-for ativo, peso in zip(ativos_validos, pesos_min_vol_lim):
-    print(f"{ativo:10s}: {peso*100:6.2f}%")
-
-print(f"\nRetorno:       {ret_min_vol_lim*100:.4f}%")
-print(f"Volatilidade:  {vol_min_vol_lim*100:.4f}%")
-print(f"Sharpe:        {sharpe_min_vol_lim:.4f}")
 
 # -----------------------------
 # TARGET X% ao mês - minimizar volatilidade para retorno alvo (BLOCO ROBUSTO)
@@ -725,30 +596,6 @@ ax.scatter(vol_min_retorno*100, ret_min_retorno*100,
 
 ax.scatter(vol_target*100, ret_target*100,
            color='purple', marker='o', s=180, label='Target')
-
-# Carteira limitada
-# Sharpe limitado
-ax.scatter(
-    vol_max_sharpe_lim * 100,
-    ret_max_sharpe_lim * 100,
-    color="green",
-    s=220,
-    marker="D",
-    edgecolor="black",
-    label="Sharpe Limitado"
-)
-
-# MinVol limitado
-ax.scatter(
-    vol_min_vol_lim * 100,
-    ret_min_vol_lim * 100,
-    color="orange",
-    s=220,
-    marker="s",
-    edgecolor="black",
-    label="MinVol Limitado"
-)
-
 
 # fronteira eficiente
 if len(fronteira_vols) > 0:

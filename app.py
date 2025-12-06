@@ -9,18 +9,20 @@ import plotly.express as px
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 import random
-import time
+import json
 from datetime import datetime
 
 
-# ========== FIREBASE INIT ==========
+
+# ================= FIREBASE INIT =================
 if not firebase_admin._apps:
-    cred = credentials.Certificate("firebase_key.json")
+    firebase_json = json.loads(st.secrets["FIREBASE_KEY"])
+    cred = credentials.Certificate(firebase_json)
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
 
-# ========== SESSION STATE ==========
+# ================= SESSION STATE =================
 if "logado" not in st.session_state:
     st.session_state.logado = False
 if "email" not in st.session_state:
@@ -31,31 +33,33 @@ if "permanecer" not in st.session_state:
     st.session_state.permanecer = False
 
 
+# ================= TELA DE LOGIN =================
 def tela_login():
     st.title("🔐 Acesso ao Sistema")
 
     email = st.text_input("Digite seu e-mail")
 
     permanecer = st.checkbox("Permanecer logado neste dispositivo")
-    
+
     if st.button("Enviar código"):
-        if email:
+        if email and "@" in email:
             codigo = str(random.randint(100000, 999999))
+
             st.session_state.codigo = codigo
             st.session_state.email = email
             st.session_state.permanecer = permanecer
 
-            # salva no firebase
+            # salva tentativa de login
             db.collection("logins").add({
                 "email": email,
                 "codigo": codigo,
                 "criado_em": datetime.now()
             })
 
-            st.success("Código enviado para seu e-mail (simulação).")
-            st.info(f"Código gerado (debug): {codigo}")
+            st.success("✅ Código enviado para seu e-mail (modo simulado).")
+            st.info(f"DEBUG - Código gerado: {codigo}")
         else:
-            st.error("Digite um e-mail válido")
+            st.error("Digite um e-mail válido.")
 
     codigo_digitado = st.text_input("Digite o código recebido")
 
@@ -65,13 +69,17 @@ def tela_login():
 
             db.collection("acessos").add({
                 "email": st.session_state.email,
-                "hora_acesso": datetime.now()
+                "hora_acesso": datetime.now(),
+                "user_agent": st.experimental_get_query_params()
             })
 
+            st.success("✅ Login realizado com sucesso!")
             st.rerun()
         else:
-            st.error("Código incorreto")
+            st.error("❌ Código incorreto.")
 
+
+# ================= BLOQUEIO DO APP =================
 if not st.session_state.logado:
     tela_login()
     st.stop()
